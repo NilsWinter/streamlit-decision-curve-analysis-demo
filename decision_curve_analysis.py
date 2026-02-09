@@ -7,7 +7,6 @@ from scipy.stats import norm, gaussian_kde
 from sklearn.metrics import roc_curve, roc_auc_score, confusion_matrix
 from sklearn.linear_model import LogisticRegression
 from sklearn.calibration import CalibrationDisplay
-from sklearn.ensemble import RandomForestClassifier
 import streamlit as st
 
 matplotlib.use("Agg")  # for Streamlit
@@ -30,9 +29,8 @@ st.set_page_config(layout="wide", page_title="DCA Visualizer")
 # -------------------------
 #   Data Generation
 # -------------------------
-#pos_variance added
 @st.cache_data
-def generate_model_data(model_type, target_auc, prevalence, n_total, pos_variance=1.0):
+def generate_model_data(target_auc, prevalence, n_total, variance=1.0):
     low, high = 0.0, 7.0
     best_probs = None
     best_y = None
@@ -41,15 +39,12 @@ def generate_model_data(model_type, target_auc, prevalence, n_total, pos_varianc
         mid = (low + high) / 2
         n_pos = int(n_total * prevalence)
         n_neg = n_total - n_pos
-        pos_scores = np.random.normal(loc=mid, scale=pos_variance, size=n_pos)
+        pos_scores = np.random.normal(loc=mid, scale=variance, size=n_pos)
         neg_scores = np.random.normal(loc=0.0, scale=1.0, size=n_neg)
         X = np.concatenate([pos_scores, neg_scores]).reshape(-1, 1)
         y = np.array([1] * n_pos + [0] * n_neg)
 
-        if model_type == "Random Forest":
-            model = RandomForestClassifier(n_estimators=100, max_depth=3).fit(X, y)
-        else:
-            model = LogisticRegression().fit(X, y)
+        model = LogisticRegression().fit(X, y)
 
         probs = model.predict_proba(X)[:, 1]
         current_auc = roc_auc_score(y, probs)
@@ -62,6 +57,14 @@ def generate_model_data(model_type, target_auc, prevalence, n_total, pos_varianc
         best_y = y
 
     return best_y, best_probs
+
+
+def get_probabilities(log_reg, X, calibration_factor):
+    logits = log_reg.decision_function(X)
+    scaled_logits = logits * calibration_factor
+    probs = 1 / (1 + np.exp(-scaled_logits))
+    return probs
+
 # -------------------------
 #   DCA Helpers
 # -------------------------
@@ -183,7 +186,7 @@ def display_nb_calc_detailed(y_true, probs, prev, pt, test_harm=0.0, use_harm=Fa
     if use_harm:
         # Formula with Test Harm
         st.latex(
-            r"NB = \text{Sens} \times p - (1 - \text{Spec}) \times (1 - p) \times \frac{p_t}{1 - p_t} - \text{Test Harm}")
+            r"NB = \text{sens} \times prev - (1 - \text{spec}) \times (1 - prev) \times \frac{p_t}{1 - p_t} - \text{Test Harm}")
         st.markdown("##### Calculation")
         st.latex(r'''
         NB = (%.2f \times %.2f) - ((1 - %.2f) \times (1 - %.2f) \times \frac{%.2f}{1 - %.2f}) - %.4f
@@ -194,7 +197,7 @@ def display_nb_calc_detailed(y_true, probs, prev, pt, test_harm=0.0, use_harm=Fa
         ''' % (term_tp, (1 - spec), (1 - prev), weight, test_harm))
     else:
         # Standard Formula
-        st.latex(r"NB = \text{Sens} \times p - (1 - \text{Spec}) \times (1 - p) \times \frac{p_t}{1 - p_t}")
+        st.latex(r"NB = \text{sens} \times prev - (1 - \text{spec}) \times (1 - prev) \times \frac{p_t}{1 - p_t}")
         st.markdown("##### Calculation")
         st.latex(r'''
         NB = (%.2f \times %.2f) - ((1 - %.2f) \times (1 - %.2f) \times \frac{%.2f}{1 - %.2f})
@@ -208,7 +211,7 @@ def display_nb_calc_detailed(y_true, probs, prev, pt, test_harm=0.0, use_harm=Fa
 
 
 def plot_calibration_multi(models_data):
-    fig, ax = plt.subplots(figsize=(5, 5))
+    fig, ax = plt.subplots(figsize=(6, 6))
     colors = [COLOR_M1, COLOR_M2, COLOR_M3]
     for i, m in enumerate(models_data):
         CalibrationDisplay.from_predictions(
@@ -248,7 +251,6 @@ def plot_dca_multi_compare_kde(models_data, prevalence, threshold_pt):
         y = m['y_true']
         p = m['probs']
 
-        # KDE für beide Klassen
         sns.kdeplot(p[y == 0], ax=ax, fill=True, color="gray", label="Neg", alpha=0.3, bw_adjust=0.8)
         sns.kdeplot(p[y == 1], ax=ax, fill=True, color=color, label="Pos", alpha=0.5, bw_adjust=0.8)
 
@@ -261,10 +263,8 @@ def plot_dca_multi_compare_kde(models_data, prevalence, threshold_pt):
         ax.grid(axis='x', alpha=0.2)
 
     ax3.set_xlabel("Predicted Probability")
-
-    # Layout optimieren, um Überlappungen zu vermeiden
-    # plt.tight_layout() # tight_layout verträgt sich manchmal nicht mit gridspec_kw hspace
     st.pyplot(fig)
+
 
 def plot_dca_multi_compare(models_data, prevalence, threshold_pt):
     # Note: Test harm usually specific to a model, here we ignore it for comparison
@@ -286,6 +286,7 @@ def plot_dca_multi_compare(models_data, prevalence, threshold_pt):
     ax.legend(fontsize='small')
     st.pyplot(fig)
 
+
 def plot_roc_multi(models_data):
     fig, ax = plt.subplots(figsize=(5, 5))
     ax.plot([0, 1], [0, 1], linestyle="--", color="black", label="Chance")
@@ -300,16 +301,16 @@ def plot_roc_multi(models_data):
     ax.legend(loc="lower right", fontsize='small')
     st.pyplot(fig)
 
+
 # added for model comparison discrimination
 def plot_risk_distributions_dual(m1, m2):
-    """Zeigt die Risk Distributions beider Modelle untereinander."""
     fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(6, 8), sharex=True)
 
     for ax, m, color in zip([ax1, ax2], [m1, m2], [COLOR_M1, COLOR_M2]):
         y = m['y_true']
         p = m['probs']
 
-        # KDE für beide Klassen
+        # KDE
         sns.kdeplot(p[y == 0], ax=ax, fill=True, color="gray", label="Negatives", alpha=0.3, bw_adjust=0.8)
         sns.kdeplot(p[y == 1], ax=ax, fill=True, color=color, label="Positives", alpha=0.5, bw_adjust=0.8)
 
@@ -356,7 +357,7 @@ with c3:
         harm_val = 0.0
 
 # Data Gen (Page 1)
-y_main, probs_main = generate_model_data("Logistic Regression", auc_main, prev_main, n_main)
+y_main, probs_main = generate_model_data(auc_main, prev_main, n_main)
 model_main_data = {'name': 'Main Model', 'y_true': y_main, 'probs': probs_main}
 
 # Calculate Metrics
@@ -403,23 +404,23 @@ st.write("")
 
 col_ctrl1, col_ctrl2, col_ctrl3 = st.columns([1, 0.8, 0.6])
 with col_ctrl3:
-    #Model1
-    st.markdown(f"<h3 style='color:{COLOR_M1}'>Model 1 - Logistic Regression</h3>", unsafe_allow_html=True)
-    type_m1 = "Logistic Regression"
+    # Model1
+    st.markdown(f"<h3 style='color:{COLOR_M1}'>Model 1</h3>", unsafe_allow_html=True)
     auc_m1 = st.slider("AUC", 0.55, 0.95, 0.80, key="am1")
-    var_m1 = st.slider("Heterogeneity", 0.5, 2.5, 1.0, 0.1, key="vm1", help="how well do the models perform with more or less heterogeneity in the event group?")
-    #Model 2
-    st.markdown(f"<h3 style='color:{COLOR_M2}'>Model 2 - Random Forest</h3>", unsafe_allow_html=True)
-    type_m2 = "Random Forest"
+    var_m1 = st.slider("Heterogeneity (Std Dev)", 0.5, 2.5, 1.0, 0.1, key="vm1",
+                       help="Lower variance means predictions cluster more in the middle")
+    # Model 2
+    st.markdown(f"<h3 style='color:{COLOR_M2}'>Model 2</h3>", unsafe_allow_html=True)
     auc_m2 = st.slider("AUC", 0.55, 0.95, 0.80, key="am2")
-    var_m2 = st.slider("Heterogeneity", 0.5, 2.5, 1.0, 0.1, key="vm2", help="how well do the models perform with more or less heterogeneity in the event group?")
+    var_m2 = st.slider("Heterogeneity (Std Dev)", 0.5, 2.5, 2.0, 0.1, key="vm2",
+                       help="Higher variance means more 'confident' predictions at 0 and 1")
 
 # Page 2: Data generation
-y1_p2, p1_p2 = generate_model_data(type_m1, auc_m1, prev_sec, n_sec, pos_variance=var_m1)
-y2_p2, p2_p2 = generate_model_data(type_m2, auc_m2, prev_sec, n_sec, pos_variance=var_m2)
+y1_p2, p1_p2 = generate_model_data(auc_m1, prev_sec, n_sec, variance=var_m1)
+y2_p2, p2_p2 = generate_model_data(auc_m2, prev_sec, n_sec, variance=var_m2)
 
-m1_data = {'name': 'Model 1', 'type': type_m1, 'y_true': y1_p2, 'probs': p1_p2}
-m2_data = {'name': 'Model 2', 'type': type_m2, 'y_true': y2_p2, 'probs': p2_p2}
+m1_data = {'name': 'Model 1', 'y_true': y1_p2, 'probs': p1_p2}
+m2_data = {'name': 'Model 2', 'y_true': y2_p2, 'probs': p2_p2}
 
 with col_ctrl1:
     plot_dca_multi_compare_kde([m1_data, m2_data], prev_sec, pt_sec)
@@ -435,8 +436,10 @@ st.header("Model Comparison - Calibration")
 
 # --- Page 3 Global Controls ---
 gc1, gc2 = st.columns(2)
-# fixed sample size at 5000
+# fixed sample size at 5000, fixed AUC at 0.80
 n_comp = 5000
+auc_cal = 0.80
+
 with gc1:
     prev_comp = st.slider("Prevalence", 0.05, 0.95, 0.33, 0.01, key="prev_comp")
 with gc2:
@@ -451,38 +454,28 @@ col_dca, col_roc, col_cal, col_controls = st.columns([1, 1, 1, 0.8])
 with col_controls:
     # Model 1
     st.markdown(f"<span style='color:{COLOR_M1}'><b>Model 1</b></span>", unsafe_allow_html=True)
-    col_m1_1, col_m1_2 = st.columns(2)
-    with col_m1_1:
-        auc_m1 = st.slider("AUC", 0.5, 0.99, 0.80, 0.01, key="auc_m1")
-    with col_m1_2:
-        cal_m1 = st.slider("Calib", 0.1, 3.0, 0.4, 0.1, key="cal_m1")
+    cal_m1 = st.slider("Calibration", 0.1, 3.0, 0.4, 0.1, key="cal_m1")
 
     # Model 2
     st.markdown(f"<span style='color:{COLOR_M2}'><b>Model 2</b></span>", unsafe_allow_html=True)
-    col_m2_1, col_m2_2 = st.columns(2)
-    with col_m2_1:
-        auc_m2 = st.slider("AUC", 0.5, 0.99, 0.80, 0.01, key="auc_m2")
-    with col_m2_2:
-        cal_m2 = st.slider("Calib", 0.1, 3.0, 1.0, 0.1, key="cal_m2")
+    cal_m2 = st.slider("Calibration", 0.1, 3.0, 1.0, 0.1, key="cal_m2")
 
     # Model 3
     st.markdown(f"<span style='color:{COLOR_M3}'><b>Model 3</b></span>", unsafe_allow_html=True)
-    col_m3_1, col_m3_2 = st.columns(2)
-    with col_m3_1:
-        auc_m3 = st.slider("AUC", 0.5, 0.99, 0.80, 0.01, key="auc_m3")
-    with col_m3_2:
-        cal_m3 = st.slider("Calib", 0.1, 3.0, 2.5, 0.1, key="cal_m3")
+    cal_m3 = st.slider("Calibration", 0.1, 3.0, 2.5, 0.1, key="cal_m3")
 
 # --- Data Generation ---
-y1, p1_raw = generate_model_data("Logistic Regression", auc_m1, prev_comp, n_comp)
-y2, p2_raw = generate_model_data("Logistic Regression", auc_m2, prev_comp, n_comp)
-y3, p3_raw = generate_model_data("Logistic Regression", auc_m3, prev_comp, n_comp)
+y1, p1_raw = generate_model_data(auc_cal, prev_comp, n_comp, variance=1.0)
+y2, p2_raw = generate_model_data(auc_cal, prev_comp, n_comp, variance=1.0)
+y3, p3_raw = generate_model_data(auc_cal, prev_comp, n_comp, variance=1.0)
+
 
 def apply_calibration(probs, factor):
     p = np.clip(probs, 0.001, 0.999)
     logits = np.log(p / (1 - p))
     scaled_logits = logits * (1.0 / factor)
     return 1 / (1 + np.exp(-scaled_logits))
+
 
 probs1 = apply_calibration(p1_raw, cal_m1)
 probs2 = apply_calibration(p2_raw, cal_m2)
