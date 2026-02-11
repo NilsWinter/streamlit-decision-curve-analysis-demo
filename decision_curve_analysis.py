@@ -182,13 +182,13 @@ def display_nb_calc_detailed(y_true, probs, prev, pt, test_harm=0.0, use_harm=Fa
     term_tp = sens * prev
     term_fp = (1 - spec) * (1 - prev) * weight
 
-    st.markdown("##### Net Benefit Formula")
+    st.markdown("### Net Benefit Formula")
 
     if use_harm:
         # Formula with Test Harm
         st.latex(
             r"NB = \text{sens} \times prev - (1 - \text{spec}) \times (1 - prev) \times \frac{p_t}{1 - p_t} - \text{Test Harm}")
-        st.markdown("##### Calculation")
+        st.markdown("#### Calculation")
         st.latex(r'''
         NB = (%.2f \times %.2f) - ((1 - %.2f) \times (1 - %.2f) \times \frac{%.2f}{1 - %.2f}) - %.4f
         ''' % (sens, prev, spec, prev, pt, pt, test_harm))
@@ -199,7 +199,7 @@ def display_nb_calc_detailed(y_true, probs, prev, pt, test_harm=0.0, use_harm=Fa
     else:
         # Standard Formula
         st.latex(r"NB = \text{sens} \times prev - (1 - \text{spec}) \times (1 - prev) \times \frac{p_t}{1 - p_t}")
-        st.markdown("##### Calculation")
+        st.markdown("#### Calculation")
         st.latex(r'''
         NB = (%.2f \times %.2f) - ((1 - %.2f) \times (1 - %.2f) \times \frac{%.2f}{1 - %.2f})
         ''' % (sens, prev, spec, prev, pt, pt))
@@ -358,17 +358,29 @@ with col2:
     display_nb_calc_detailed(y_main, probs_main, prev_main, pt_main, test_harm=harm_val, use_harm=use_harm)
 
 with col3:
-    st.markdown("**Confusion Matrix**")
-    cm_df = pd.DataFrame([[tn, fp], [fn, tp]], index=["True Neg", "True Pos"], columns=["Pred Neg", "Pred Pos"])
-    st.table(cm_df)
+    st.markdown("### **Confusion Matrix**")
+    cm_df = pd.DataFrame([[tn, fp], [fn, tp]], index=["True Negative", "True Positive"], columns=["Predicted Negative", "Predicted Positive"])
+    st.dataframe(cm_df, use_container_width=True)
+    st.write("")
 
-    st.markdown("**Metrics**")
-    # Interpretation of Test Harm in formula: NB decreases
-    metrics_df = pd.DataFrame({
-        "Metric": ["Net Benefit", "Sensitivity", "Specificity", "AUC"],
-        "Value": [f"{nb_main:.4f}", f"{sens:.3f}", f"{spec:.3f}", f"{auc_main:.3f}"]
-    })
-    st.table(metrics_df.set_index("Metric"))
+    st.markdown("""
+            <style>
+                [data-testid="stMetricValue"] {
+                    font-size: 1.8rem !important;
+                }
+                .stDataFrame [data-testid="stTable"] th,
+                .stDataFrame [data-testid="stTable"] td {
+                }
+            </style>
+        """, unsafe_allow_html=True)
+    st.markdown("### **Metrics**")
+    m1, m2 = st.columns(2)
+    m1.metric("Net Benefit", f"{nb_main:.4f}")
+    m2.metric("AUC", f"{auc_main:.3f}")
+
+    m3, m4 = st.columns(2)
+    m3.metric("Sensitivity", f"{sens:.1%}")
+    m4.metric("Specificity", f"{spec:.1%}")
 
 # ===============================================
 #       PAGE 2: MODEL COMPARISON - DISCRIMINATION
