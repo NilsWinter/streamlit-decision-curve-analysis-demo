@@ -8,6 +8,8 @@ from sklearn.metrics import roc_curve, roc_auc_score, confusion_matrix
 from sklearn.linear_model import LogisticRegression
 from sklearn.calibration import CalibrationDisplay
 import streamlit as st
+import plotly.graph_objects as go
+import math
 
 matplotlib.use("Agg")  # for Streamlit
 
@@ -359,10 +361,86 @@ with col2:
 
 with col3:
     st.markdown("### **Confusion Matrix**")
-    cm_df = pd.DataFrame([[tn, fp], [fn, tp]], index=["True Negative", "True Positive"], columns=["Predicted Negative", "Predicted Positive"])
-    st.dataframe(cm_df, use_container_width=True)
-    st.write("")
+    # Adjust Scale for Graphic
+    total = tn + fp + fn + tp
+    def scale_to_100(value, total):
+        return int(round((value / total) * 100)) if total > 0 else 0
 
+    s_tp = scale_to_100(tp, total)
+    s_fp = scale_to_100(fp, total)
+    s_fn = scale_to_100(fn, total)
+    s_tn = scale_to_100(tn, total)
+
+    COLS = 7
+    GAP_Y = 6
+
+    def get_coords(count, offset_x, offset_y, direction="up"):
+        x = [offset_x + (i % COLS) for i in range(count)]
+        if direction == "up":
+            y = [offset_y + (i // COLS) for i in range(count)]
+        else:
+            y = [offset_y - (i // COLS) for i in range(count)]
+        return x, y
+
+
+    rows_tp = math.ceil(s_tp / COLS) if s_tp > 0 else 0
+    rows_fp = math.ceil(s_fp / COLS) if s_fp > 0 else 0
+    rows_fn = math.ceil(s_fn / COLS) if s_fn > 0 else 0
+    rows_tn = math.ceil(s_tn / COLS) if s_tn > 0 else 0
+
+    max_rows_top = max(rows_tp, rows_fp, 1)
+    max_rows_bottom = max(rows_fn, rows_tn, 1)
+    deepest_row = -GAP_Y - max_rows_bottom - 2
+    fig = go.Figure()
+
+    quadrants = [
+        (s_tp, tp, "True Positive", "#E74C3C", -2, 0, "up"),
+        (s_fp, fp, "False Positive", "#95A5A6", 7, 0, "up"),
+        (s_fn, fn, "False Negative", "#BDC3C7", -2, -GAP_Y, "down"),
+        (s_tn, tn, "True Negative", "#3498DB", 7, -GAP_Y, "down")
+    ]
+    for s_count, real_count, label, color, ox, oy, direct in quadrants:
+        if s_count > 0:
+            x, y = get_coords(s_count, ox, oy, direction = direct)
+            fig.add_trace(go.Scatter(
+                x=x, y=y,
+                mode='markers',
+                marker=dict(size=10, color=color, symbol="circle"),
+                name=f"{label}",
+                hovertemplate=f"<b>{label}</b><br>Percentage: %{{text}}%<extra></extra>",
+                text=[round(real_count / total * 100, 1)] * s_count
+            ))
+
+
+    common_font = dict(size=13, color="black")
+    #Predicted positive
+    y_pos_labels = max_rows_top + 0.8
+    fig.add_annotation(x=1.2, y=y_pos_labels, text=f"True Positive (n={tp})", showarrow=False, font=common_font)
+    fig.add_annotation(x=10.2, y=y_pos_labels, text=f"False Positive (n={fp})", showarrow=False, font=common_font)
+    fig.add_annotation(x=5.75, y=y_pos_labels + 1.5, text=f"<b>PREDICTED POSITIVE (n={tp + fp})</b>", showarrow=False,
+                       font=dict(size=14, color="black"))
+    #Predicted negative
+    y_neg_labels = -GAP_Y +1.2
+    fig.add_annotation(x=1.2, y=y_neg_labels, text=f"False Negative (n={fn})", showarrow=False, font=common_font)
+    fig.add_annotation(x=10.2, y=y_neg_labels, text=f"True Negative (n={tn})", showarrow=False, font=common_font)
+    fig.add_annotation(x=5.75, y=y_neg_labels + 1.5, text=f"<b>PREDICTED NEGATIVE (n={tn + fn})</b>", showarrow=False,
+                       font=dict(size=14, color="black"))
+
+    fig.update_layout(
+        showlegend=False,
+        xaxis=dict(showgrid=False, zeroline=False, showticklabels=False, range=[-4, 16]),
+        yaxis=dict(showgrid=False, zeroline=False, showticklabels=False, range=[deepest_row, y_pos_labels + 3]),
+        margin=dict(l=0, r=0, t=10, b=0),
+        height=550,
+        plot_bgcolor="rgba(0,0,0,0)",
+        paper_bgcolor="rgba(0,0,0,0)"
+    )
+
+    #st.markdown(f"One icon is approximately equivalent to {total / 100:.0f} individuals (N={total})")
+    st.plotly_chart(fig, use_container_width=True, config={'displayModeBar': False})
+
+
+# Metrics
     st.markdown("""
             <style>
                 [data-testid="stMetricValue"] {
@@ -374,6 +452,7 @@ with col3:
             </style>
         """, unsafe_allow_html=True)
     st.markdown("### **Metrics**")
+
     m1, m2 = st.columns(2)
     m1.metric("Net Benefit", f"{nb_main:.4f}")
     m2.metric("AUC", f"{auc_main:.3f}")
