@@ -18,8 +18,10 @@ matplotlib.use("Agg")  # for Streamlit
 # -------------------------
 COLOR_MAIN = "#9CC6DB"  # Main Model
 COLOR_ACCENT = "#FF4B4B"  # Threshold lines
-COLOR_M1_DIS = "#088F8F"   # Model 1 Discrimination
-COLOR_M2_DIS = "#E86FAE"   # Model 2 Discrimination
+COLOR_M1_DIS = "#09a7a7"   # Model 1 Discrimination
+COLOR_M1_DIS_Neg = "#055f5f" # Model 1 Discrimination Negative
+COLOR_M2_DIS = "#df6ba8"   # Model 2 Discrimination
+COLOR_M2_DIS_Neg = "#8a4268" # Model 2 Discrimination Negative
 COLOR_M1 = "#8F0177"  # Model 1
 COLOR_M2 = "#84994F"  # Model 2
 COLOR_M3 = "#F1A90E" # Model 3
@@ -190,7 +192,7 @@ def display_nb_calc_detailed(y_true, probs, prev, pt, test_harm=0.0, use_harm=Fa
         # Formula with Test Harm
         st.latex(
             r"NB = \text{sens} \times prev - (1 - \text{spec}) \times (1 - prev) \times \frac{p_t}{1 - p_t} - \text{Test Harm}")
-        st.markdown("#### Calculation")
+        st.markdown("##### Calculation")
         st.latex(r'''
         NB = (%.2f \times %.2f) - ((1 - %.2f) \times (1 - %.2f) \times \frac{%.2f}{1 - %.2f}) - %.4f
         ''' % (sens, prev, spec, prev, pt, pt, test_harm))
@@ -201,7 +203,7 @@ def display_nb_calc_detailed(y_true, probs, prev, pt, test_harm=0.0, use_harm=Fa
     else:
         # Standard Formula
         st.latex(r"NB = \text{sens} \times prev - (1 - \text{spec}) \times (1 - prev) \times \frac{p_t}{1 - p_t}")
-        st.markdown("#### Calculation")
+        st.markdown("##### Calculation")
         st.latex(r'''
         NB = (%.2f \times %.2f) - ((1 - %.2f) \times (1 - %.2f) \times \frac{%.2f}{1 - %.2f})
         ''' % (sens, prev, spec, prev, pt, pt))
@@ -252,12 +254,13 @@ def plot_dca_multi_compare_kde(models_data, prevalence, threshold_pt):
     ax1.grid(True, alpha=0.1)
 
     # Distribution plots
-    for ax, m, color in zip([ax2, ax3], models_data, colors):
+    neg_distr_colors = [COLOR_M1_DIS_Neg, COLOR_M2_DIS_Neg]
+    for ax, m, color, neg_distr_colors in zip([ax2, ax3], models_data, colors, neg_distr_colors):
         y = m['y_true']
         p = m['probs']
 
-        sns.kdeplot(p[y == 0], ax=ax, fill=True, color="gray", label="Neg", alpha=0.3, bw_adjust=0.8)
-        sns.kdeplot(p[y == 1], ax=ax, fill=True, color=color, label="Pos", alpha=0.5, bw_adjust=0.8)
+        sns.kdeplot(p[y == 0], ax=ax, fill=True, color=neg_distr_colors, label="Negative", alpha=0.3, bw_adjust=0.8)
+        sns.kdeplot(p[y == 1], ax=ax, fill=True, color=color, label="Positive", alpha=0.5, bw_adjust=0.8)
 
         ax.axvline(threshold_pt, color=COLOR_ACCENT, linestyle="--", linewidth=1)
         ax.set_title("")
@@ -359,6 +362,29 @@ with col2:
     # Pass harm value and toggle state to display function
     display_nb_calc_detailed(y_main, probs_main, prev_main, pt_main, test_harm=harm_val, use_harm=use_harm)
 
+# Metrics
+    st.write("")
+    st.markdown("### **Metrics**")
+    _, content_col, _ = st.columns([0.15, 0.45, 0.4])
+    with content_col:
+        st.markdown("""
+                    <style>
+                        [data-testid="stMetricValue"] {
+                            font-size: 1.8rem !important;
+                        }
+                        .stDataFrame [data-testid="stTable"] th,
+                        .stDataFrame [data-testid="stTable"] td {
+                        }
+                    </style>
+                """, unsafe_allow_html=True)
+        m1, m2 = st.columns(2, gap="small")
+        m1.metric("Net Benefit", f"{nb_main:.4f}")
+        m2.metric("AUC", f"{auc_main:.3f}")
+
+        m3, m4 = st.columns(2)
+        m3.metric("Sensitivity", f"{sens:.1%}")
+        m4.metric("Specificity", f"{spec:.1%}")
+
 with col3:
     st.markdown("### **Confusion Matrix**")
     # Adjust Scale for Graphic
@@ -371,17 +397,10 @@ with col3:
     s_fn = scale_to_100(fn, total)
     s_tn = scale_to_100(tn, total)
 
+    st.markdown(f"One icon is approximately equivalent to {total / 100:.0f} individuals (N={total})")
+
     COLS = 7
-    GAP_Y = 6
-
-    def get_coords(count, offset_x, offset_y, direction="up"):
-        x = [offset_x + (i % COLS) for i in range(count)]
-        if direction == "up":
-            y = [offset_y + (i // COLS) for i in range(count)]
-        else:
-            y = [offset_y - (i // COLS) for i in range(count)]
-        return x, y
-
+    GAP_Y = 5
 
     rows_tp = math.ceil(s_tp / COLS) if s_tp > 0 else 0
     rows_fp = math.ceil(s_fp / COLS) if s_fp > 0 else 0
@@ -390,22 +409,49 @@ with col3:
 
     max_rows_top = max(rows_tp, rows_fp, 1)
     max_rows_bottom = max(rows_fn, rows_tn, 1)
-    deepest_row = -GAP_Y - max_rows_bottom - 2
+
+    def get_coords(count, offset_x, base_y, direction, section_max_rows):
+        x = [offset_x + (i % COLS) for i in range(count)]
+        if direction == "up":
+            y = [(base_y + section_max_rows - 1) - (i // COLS) for i in range(count)]
+        else:
+            y = [base_y - (i // COLS) for i in range(count)]
+        return x, y
+
+
     fig = go.Figure()
 
     quadrants = [
-        (s_tp, tp, "True Positive", "#E74C3C", -2, 0, "up"),
-        (s_fp, fp, "False Positive", "#95A5A6", 7, 0, "up"),
-        (s_fn, fn, "False Negative", "#BDC3C7", -2, -GAP_Y, "down"),
-        (s_tn, tn, "True Negative", "#3498DB", 7, -GAP_Y, "down")
+        (s_tp, tp, "True Positive", "#E74C3C", -2, 0, "up", max_rows_top, False),
+        (s_fp, fp, "False Positive", "#3498DB", 7, 0, "up", max_rows_top, True),
+        (s_fn, fn, "False Negative", "#E74C3C", -2, -GAP_Y, "down", max_rows_bottom, True),
+        (s_tn, tn, "True Negative", "#3498DB", 7, -GAP_Y, "down", max_rows_bottom, False)
     ]
-    for s_count, real_count, label, color, ox, oy, direct in quadrants:
+    for s_count, real_count, label, color, ox, oy, direct, m_rows, false_categorized in quadrants:
         if s_count > 0:
-            x, y = get_coords(s_count, ox, oy, direction = direct)
+            x, y = get_coords(s_count, ox, oy, direct, m_rows)
+            if false_categorized:
+                marker_style = dict(
+                    size=12,
+                    color='rgba(0,0,0,0)',
+                    symbol="circle",
+                    line=dict(
+                        color=color,
+                        width=2,
+                        dash='dot'
+                    )
+                )
+            else:
+                marker_style = dict(
+                    size=12,
+                    color=color,
+                    symbol="circle",
+                    line=dict(width=0)
+                )
             fig.add_trace(go.Scatter(
                 x=x, y=y,
                 mode='markers',
-                marker=dict(size=10, color=color, symbol="circle"),
+                marker=marker_style,
                 name=f"{label}",
                 hovertemplate=f"<b>{label}</b><br>Percentage: %{{text}}%<extra></extra>",
                 text=[round(real_count / total * 100, 1)] * s_count
@@ -420,46 +466,27 @@ with col3:
     fig.add_annotation(x=5.75, y=y_pos_labels + 1.5, text=f"<b>PREDICTED POSITIVE (n={tp + fp})</b>", showarrow=False,
                        font=dict(size=14, color="black"))
     #Predicted negative
-    y_neg_labels = -GAP_Y +1.2
-    fig.add_annotation(x=1.2, y=y_neg_labels, text=f"False Negative (n={fn})", showarrow=False, font=common_font)
-    fig.add_annotation(x=10.2, y=y_neg_labels, text=f"True Negative (n={tn})", showarrow=False, font=common_font)
-    fig.add_annotation(x=5.75, y=y_neg_labels + 1.5, text=f"<b>PREDICTED NEGATIVE (n={tn + fn})</b>", showarrow=False,
+    y_neg_labels_top = -GAP_Y +1.2
+    fig.add_annotation(x=1.2, y=y_neg_labels_top, text=f"False Negative (n={fn})", showarrow=False, font=common_font)
+    fig.add_annotation(x=10.2, y=y_neg_labels_top, text=f"True Negative (n={tn})", showarrow=False, font=common_font)
+    fig.add_annotation(x=5.75, y=y_neg_labels_top + 1.5, text=f"<b>PREDICTED NEGATIVE (n={tn + fn})</b>", showarrow=False,
                        font=dict(size=14, color="black"))
+
+    deepest_row = -GAP_Y - (max_rows_bottom - 1)
 
     fig.update_layout(
         showlegend=False,
         xaxis=dict(showgrid=False, zeroline=False, showticklabels=False, range=[-4, 16]),
-        yaxis=dict(showgrid=False, zeroline=False, showticklabels=False, range=[deepest_row, y_pos_labels + 3]),
+        yaxis=dict(showgrid=False, zeroline=False, showticklabels=False, range=[deepest_row - 1.5, y_pos_labels + 3]),
         margin=dict(l=0, r=0, t=10, b=0),
-        height=550,
+        height=500,
         plot_bgcolor="rgba(0,0,0,0)",
         paper_bgcolor="rgba(0,0,0,0)"
     )
 
-    #st.markdown(f"One icon is approximately equivalent to {total / 100:.0f} individuals (N={total})")
     st.plotly_chart(fig, use_container_width=True, config={'displayModeBar': False})
 
 
-# Metrics
-    st.markdown("""
-            <style>
-                [data-testid="stMetricValue"] {
-                    font-size: 1.8rem !important;
-                }
-                .stDataFrame [data-testid="stTable"] th,
-                .stDataFrame [data-testid="stTable"] td {
-                }
-            </style>
-        """, unsafe_allow_html=True)
-    st.markdown("### **Metrics**")
-
-    m1, m2 = st.columns(2)
-    m1.metric("Net Benefit", f"{nb_main:.4f}")
-    m2.metric("AUC", f"{auc_main:.3f}")
-
-    m3, m4 = st.columns(2)
-    m3.metric("Sensitivity", f"{sens:.1%}")
-    m4.metric("Specificity", f"{spec:.1%}")
 
 # ===============================================
 #       PAGE 2: MODEL COMPARISON - DISCRIMINATION
