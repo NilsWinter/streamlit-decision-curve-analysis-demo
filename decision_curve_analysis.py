@@ -13,6 +13,40 @@ import math
 
 matplotlib.use("Agg")  # for Streamlit
 
+## Set font ##
+st.markdown("""
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Work+Sans:wght@300;400;600;700&display=swap');
+
+        /* Die Schriftart auf Text-Elemente anwenden, aber Icons ausschließen */
+        html, body, .stMarkdown, p, h1, h2, h3, h4, h5, h6, label, [data-testid="stMetricValue"] {
+            font-family: 'Work Sans', sans-serif !important;
+        }
+
+        /* Spezifisch für den Expander-Titel (verhindert das Überlagern) */
+        .st-ae p, .st-an p {
+            font-family: 'Work Sans', sans-serif !important;
+        }
+
+        /* WICHTIG: Icons (Pfeile etc.) dürfen NICHT die Schriftart überschreiben */
+        [data-testid="stExpander"] svg, 
+        [data-icon], 
+        .st-ae svg {
+            font-family: inherit !important;
+        }
+
+        /* Falls der Expander-Header immer noch zerschossen ist, hier gezielt korrigieren */
+        summary[data-testid="stExpanderHeader"] {
+            font-family: 'Work Sans', sans-serif !important;
+        }
+
+        /* Das Icon im Expander schützen */
+        summary[data-testid="stExpanderHeader"] svg {
+            font-family: unset !important;
+        }
+    </style>
+""", unsafe_allow_html=True)
+
 # -------------------------
 #   COLOR CONFIGURATION
 # -------------------------
@@ -330,11 +364,22 @@ n_main = 5000
 auc_main = 0.80
 
 with c1:
-    prev_main = st.slider("Prevalence", 0.05, 0.95, 0.33, 0.01, key="prev_main")
-with c2:
-    pt_main = st.slider("Decision Threshold (pₜ)", 0.01, 0.99, 0.33, 0.01, key="pt_main")
+    prev_main = st.slider("Prevalence of the Event", 0.05, 0.95, 0.33, 0.01, key="prev_main")
 
-# Row 2: Test Harm
+    # different options for illustrating informative text
+with c2:
+    pt_main = st.slider("Decision Threshold (pₜ)", 0.01, 0.99, 0.33, 0.01, key="pt_main", help="**Numbers needed**: How many interventions would I do to get one True Positive? **For instance:** I would perform 20 times intervention x to treat one person for whom the intervention is beneficial (i.e. with the event) -> **Odds** of 1:20, i.e. threshold of 0.476 (4.76%)")
+    with st.expander("Decision Threshold"):
+        st.write("""
+            **"Numbers needed"**: How many interventions would I do to get one True Positive? 
+                
+            **For instance:** I would perform 20 times intervention x to treat one person for whom the intervention is beneficial (i.e. with the event) 
+            -> **Odds** of 1:20, i.e. threshold of 0.476 (4.76%)
+        """)
+    st.info("**Numbers needed**: How many interventions would I do to get one True Positive? **For instance:** I would perform 20 times intervention x to treat one person for whom the intervention is beneficial (i.e. with the event) -> **Odds** of 1:20, i.e. threshold of 0.476 (4.76%)")
+
+
+    # Row 2: Test Harm
 with c4:
     use_harm = st.checkbox("Include Test Harm")
 with c3:
@@ -360,30 +405,32 @@ with col1:
 
 with col2:
     # Pass harm value and toggle state to display function
-    display_nb_calc_detailed(y_main, probs_main, prev_main, pt_main, test_harm=harm_val, use_harm=use_harm)
+    with st.container(border=True):
+        display_nb_calc_detailed(y_main, probs_main, prev_main, pt_main, test_harm=harm_val, use_harm=use_harm)
 
 # Metrics
-    st.write("")
-    st.markdown("### **Metrics**")
-    _, content_col, _ = st.columns([0.15, 0.45, 0.4])
-    with content_col:
-        st.markdown("""
-                    <style>
-                        [data-testid="stMetricValue"] {
+    with st.container (border= True):
+        st.write("")
+        st.markdown("### **Metrics**")
+        _, content_col, _ = st.columns([0.25, 0.7, 0.05])
+        with content_col:
+            st.markdown("""
+                        <style>
+                            [data-testid="stMetricValue"] {
                             font-size: 1.8rem !important;
-                        }
-                        .stDataFrame [data-testid="stTable"] th,
-                        .stDataFrame [data-testid="stTable"] td {
-                        }
-                    </style>
-                """, unsafe_allow_html=True)
-        m1, m2 = st.columns(2, gap="small")
-        m1.metric("Net Benefit", f"{nb_main:.4f}")
-        m2.metric("AUC", f"{auc_main:.3f}")
+                            }
+                            .stDataFrame [data-testid="stTable"] th,
+                            .stDataFrame [data-testid="stTable"] td {
+                            }
+                        </style>
+                    """, unsafe_allow_html=True)
+            m1, m2 = st.columns(2, gap="small")
+            m1.metric("Net Benefit", f"{nb_main:.4f}")
+            m2.metric("AUC", f"{auc_main:.3f}")
 
-        m3, m4 = st.columns(2)
-        m3.metric("Sensitivity", f"{sens:.1%}")
-        m4.metric("Specificity", f"{spec:.1%}")
+            m3, m4 = st.columns(2)
+            m3.metric("Sensitivity", f"{sens:.1%}")
+            m4.metric("Specificity", f"{spec:.1%}")
 
 with col3:
     st.markdown("### **Confusion Matrix**")
@@ -457,20 +504,20 @@ with col3:
                 text=[round(real_count / total * 100, 1)] * s_count
             ))
 
-
-    common_font = dict(size=13, color="black")
+    plotly_font = dict(family="Work Sans, sans-serif", size=13, color="black")
+    plotly_font_bold = dict(family="Work Sans, sans-serif", size=14, color="black")
     #Predicted positive
     y_pos_labels = max_rows_top + 0.8
-    fig.add_annotation(x=1.2, y=y_pos_labels, text=f"True Positive (n={tp})", showarrow=False, font=common_font)
-    fig.add_annotation(x=10.2, y=y_pos_labels, text=f"False Positive (n={fp})", showarrow=False, font=common_font)
+    fig.add_annotation(x=1.2, y=y_pos_labels, text=f"True Positive (n={tp})", showarrow=False, font=plotly_font)
+    fig.add_annotation(x=10.2, y=y_pos_labels, text=f"False Positive (n={fp})", showarrow=False, font=plotly_font)
     fig.add_annotation(x=5.75, y=y_pos_labels + 1.5, text=f"<b>PREDICTED POSITIVE (n={tp + fp})</b>", showarrow=False,
-                       font=dict(size=14, color="black"))
+                       font=plotly_font_bold)
     #Predicted negative
     y_neg_labels_top = -GAP_Y +1.2
-    fig.add_annotation(x=1.2, y=y_neg_labels_top, text=f"False Negative (n={fn})", showarrow=False, font=common_font)
-    fig.add_annotation(x=10.2, y=y_neg_labels_top, text=f"True Negative (n={tn})", showarrow=False, font=common_font)
+    fig.add_annotation(x=1.2, y=y_neg_labels_top, text=f"False Negative (n={fn})", showarrow=False, font=plotly_font)
+    fig.add_annotation(x=10.2, y=y_neg_labels_top, text=f"True Negative (n={tn})", showarrow=False, font=plotly_font)
     fig.add_annotation(x=5.75, y=y_neg_labels_top + 1.5, text=f"<b>PREDICTED NEGATIVE (n={tn + fn})</b>", showarrow=False,
-                       font=dict(size=14, color="black"))
+                       font=plotly_font_bold)
 
     deepest_row = -GAP_Y - (max_rows_bottom - 1)
 
@@ -564,15 +611,15 @@ col_dca, col_cal, col_controls = st.columns([1, 1, 0.7])
 # --- Column 3: Controls (Right Side) ---
 with col_controls:
     # Model 1
-    st.markdown(f"<span style='color:{COLOR_M1}'><b>Model 1</b></span>", unsafe_allow_html=True)
+    st.markdown(f"<h3 style='color:{COLOR_M1}'><b>Model 1</b></span>", unsafe_allow_html=True)
     cal_m1 = st.slider("Calibration", 0.1, 3.0, 0.4, 0.1, key="cal_m1")
 
     # Model 2
-    st.markdown(f"<span style='color:{COLOR_M2}'><b>Model 2</b></span>", unsafe_allow_html=True)
+    st.markdown(f"<h3 style='color:{COLOR_M2}'><b>Model 2</b></span>", unsafe_allow_html=True)
     cal_m2 = st.slider("Calibration", 0.1, 3.0, 1.0, 0.1, key="cal_m2")
 
     # Model 3
-    st.markdown(f"<span style='color:{COLOR_M3}'><b>Model 3</b></span>", unsafe_allow_html=True)
+    st.markdown(f"<h3 style='color:{COLOR_M3}'><b>Model 3</b></span>", unsafe_allow_html=True)
     cal_m3 = st.slider("Calibration", 0.1, 3.0, 2.0, 0.1, key="cal_m3")
 
 # --- Data Generation ---
