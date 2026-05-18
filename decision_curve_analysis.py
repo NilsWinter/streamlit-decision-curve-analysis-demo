@@ -350,6 +350,7 @@ def plot_roc_multi(models_data):
 #   Streamlit App Layout
 # -------------------------
 st.title("Decision Curve Analysis Visualizer")
+st.markdown("Decision Curve Analysis (DCA) is a method for estimating and evaluating a model's clinical utility by quantifying clinical consequences in terms of benefits and harms and thereby estimating the net benefit (NB) of a model. The evaluation of the potential clinical utility of a model is an essential addition to the evaluation of the model's statistical predictive performance, as the latter does not account for the clinical consequences and therefore is not sufficiently informative when deciding whether to use the respective model in clinical practice. ")
 
 # ==========================================
 #       PAGE 1: SINGLE MODEL ANALYSIS
@@ -540,6 +541,45 @@ with col3:
 # ===============================================
 st.markdown("---")
 st.header("Model Comparison - Discrimination")
+selected_mode = st.pills(
+    "Selection of Scenario:",
+    ["Free Analysis", "Scenario 1: Test Harm", "Scenario 2: ..."],
+    default="Free Analysis"
+)
+
+if "last_mode" not in st.session_state:
+    st.session_state.last_mode = "Free Analysis"
+
+mode_changed = (selected_mode != st.session_state.last_mode)
+
+if selected_mode == "Scenario 1: Test Harm":
+    if mode_changed:
+        st.session_state.prev_sec = 0.20
+        st.session_state.am1 = 0.80
+        st.session_state.am2 = 0.70
+        st.session_state.use_harm_m1 = True
+        st.session_state.harm_val_m1 = 0.05
+    var_m1 = 1.5
+    var_m2 = 1.5
+elif selected_mode == "Scenario 2: ...":
+    if mode_changed:
+        st.session_state.prev_sec = 0.33
+        st.session_state.am1 = 0.75
+        st.session_state.am2 = 0.75
+        st.session_state.use_harm_m1 = False
+        st.session_state.use_harm_m2 = False
+        st.session_state.vm1 = 0.8
+        st.session_state.vm2 = 2.2
+else:
+    if mode_changed:
+        st.session_state.prev_sec = 0.33
+        st.session_state.am1 = 0.80
+        st.session_state.am2 = 0.80
+
+st.session_state.last_mode = selected_mode
+
+if selected_mode == "Scenario 1: Test Harm":
+    st.info("ℹ️ *Heterogeneity is fixed at 1.5 for this scenario. Model 1 starts with a Test Harm of 0.05.*")
 
 # fixed sample size at 5000
 n_sec = 5000
@@ -552,7 +592,6 @@ st.write("")
 
 col_ctrl1, col_ctrl2, col_ctrl3 = st.columns([1, 0.8, 0.6])
 with col_ctrl3:
-    # Model1
     st.markdown(f"<h3 style='color:{COLOR_M1_DIS}'>Model 1</h3>", unsafe_allow_html=True)
     use_harm_m1 = st.checkbox("Include Test Harm", key="use_harm_m1")
     if use_harm_m1:
@@ -560,8 +599,8 @@ with col_ctrl3:
     else:
         harm_val_m1 = 0.0
     auc_m1 = st.slider("AUC", 0.55, 0.95, 0.80, key="am1")
-    var_m1 = st.slider("Heterogeneity (Std Dev)", 0.5, 2.5, 1.0, 0.1, key="vm1",
-                       help="Lower variance means predictions cluster more in the middle")
+    if selected_mode in ["Free Analysis", "Scenario 2: ..."]:
+        var_m1 = st.slider("Heterogeneity (Std Dev)", 0.5, 2.5, 1.0, 0.1, key="vm1", help="Lower variance means predictions cluster more in the middle")
     # Model 2
     st.markdown(f"<h3 style='color:{COLOR_M2_DIS}'>Model 2</h3>", unsafe_allow_html=True)
     use_harm_m2 = st.checkbox("Include Test Harm", key="use_harm_m2")
@@ -570,7 +609,8 @@ with col_ctrl3:
     else:
         harm_val_m2 = 0.0
     auc_m2 = st.slider("AUC", 0.55, 0.95, 0.80, key="am2")
-    var_m2 = st.slider("Heterogeneity (Std Dev)", 0.5, 2.5, 2.0, 0.1, key="vm2",
+    if selected_mode in ["Free Analysis", "Scenario 2: ..."]:
+        var_m2 = st.slider("Heterogeneity (Std Dev)", 0.5, 2.5, 2.0, 0.1, key="vm2",
                        help="Higher variance means more 'confident' predictions at 0 and 1")
 
 # Page 2: Data generation
