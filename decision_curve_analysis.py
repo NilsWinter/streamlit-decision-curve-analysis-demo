@@ -47,6 +47,32 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
+# Inject Custom CSS
+st.markdown("""
+<style>
+/* Hintergrund der App und des Headers (bleibt gleich) */
+.stApp, [data-testid="stHeader"] {
+    background-color: rgba(0,0,0,0);
+}
+
+/* Das neue, ultraschnelle CSS:
+Streamlit verpackt Container mit einem Key automatisch in ein Div, 
+das die Klasse .st-key-DEINKEY erhält. Das nutzen wir aus!
+*/
+.st-key-card_dca, 
+.st-key-card_calc, 
+.st-key-card_metrics, 
+.st-key-card_matrix {
+    background-color: #FFFFFF !important;
+    border-radius: 12px !important;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.15) !important;
+    padding: 1.5rem !important;
+    overflow: visible !important;
+    border: none !important; /* Entfernt den Standard-Streamlit-Rahmen, da wir unseren eigenen Schatten haben */
+}
+</style>
+""", unsafe_allow_html=True)
+
 # -------------------------
 #   COLOR CONFIGURATION
 # -------------------------
@@ -391,17 +417,20 @@ nb_main = net_benefit(prev_main, sens, spec, pt_main, test_harm=harm_val)
 col1, col2, col3 = st.columns([1, 1.2, 0.8])
 
 with col1:
-    # Pass harm value to plot function so DCA curve adjusts
-    plot_combined_dca_kde(model_main_data, prev_main, pt_main, test_harm=harm_val)
+    with st.container(border=True, key="card_cda"):
+        #st.markdown("<span class='custom-card'></span>", unsafe_allow_html=True)
+        # Pass harm value to plot function so DCA curve adjusts
+        plot_combined_dca_kde(model_main_data, prev_main, pt_main, test_harm=harm_val)
 
 with col2:
     # Pass harm value and toggle state to display function
-    with st.container(border=True):
+    with st.container(border=True, key="card_calc"):
+        st.markdown("<span class='custom-card'></span>", unsafe_allow_html=True)
         display_nb_calc_detailed(y_main, probs_main, prev_main, pt_main, test_harm=harm_val, use_harm=use_harm)
 
 # Metrics
-    with st.container (border= True):
-        st.write("")
+    with st.container (border= True, key="card_metrics"):
+        st.markdown("<span class='custom-card'></span>", unsafe_allow_html=True)
         st.markdown("### **Metrics**")
         _, content_col, _ = st.columns([0.25, 0.7, 0.05])
         with content_col:
@@ -424,105 +453,107 @@ with col2:
             m4.metric("Specificity", f"{spec:.1%}")
 
 with col3:
-    st.markdown("### **Confusion Matrix**")
-    # Adjust Scale for Graphic
-    total = tn + fp + fn + tp
-    def scale_to_100(value, total):
-        return int(round((value / total) * 100)) if total > 0 else 0
+    with st.container(border=True, key="card_matrix"):
+        st.markdown("<span class='custom-card'></span>", unsafe_allow_html=True)
+        st.markdown("### **Confusion Matrix**")
+        # Adjust Scale for Graphic
+        total = tn + fp + fn + tp
+        def scale_to_100(value, total):
+            return int(round((value / total) * 100)) if total > 0 else 0
 
-    s_tp = scale_to_100(tp, total)
-    s_fp = scale_to_100(fp, total)
-    s_fn = scale_to_100(fn, total)
-    s_tn = scale_to_100(tn, total)
+        s_tp = scale_to_100(tp, total)
+        s_fp = scale_to_100(fp, total)
+        s_fn = scale_to_100(fn, total)
+        s_tn = scale_to_100(tn, total)
 
-    st.markdown(f"One icon is approximately equivalent to {total / 100:.0f} individuals (N={total})")
+        st.markdown(f"One icon is approximately equivalent to {total / 100:.0f} individuals (N={total})")
 
-    COLS = 7
-    GAP_Y = 5
+        COLS = 7
+        GAP_Y = 5
 
-    rows_tp = math.ceil(s_tp / COLS) if s_tp > 0 else 0
-    rows_fp = math.ceil(s_fp / COLS) if s_fp > 0 else 0
-    rows_fn = math.ceil(s_fn / COLS) if s_fn > 0 else 0
-    rows_tn = math.ceil(s_tn / COLS) if s_tn > 0 else 0
+        rows_tp = math.ceil(s_tp / COLS) if s_tp > 0 else 0
+        rows_fp = math.ceil(s_fp / COLS) if s_fp > 0 else 0
+        rows_fn = math.ceil(s_fn / COLS) if s_fn > 0 else 0
+        rows_tn = math.ceil(s_tn / COLS) if s_tn > 0 else 0
 
-    max_rows_top = max(rows_tp, rows_fp, 1)
-    max_rows_bottom = max(rows_fn, rows_tn, 1)
+        max_rows_top = max(rows_tp, rows_fp, 1)
+        max_rows_bottom = max(rows_fn, rows_tn, 1)
 
-    def get_coords(count, offset_x, base_y, direction, section_max_rows):
-        x = [offset_x + (i % COLS) for i in range(count)]
-        if direction == "up":
-            y = [(base_y + section_max_rows - 1) - (i // COLS) for i in range(count)]
-        else:
-            y = [base_y - (i // COLS) for i in range(count)]
-        return x, y
-
-
-    fig = go.Figure()
-
-    quadrants = [
-        (s_tp, tp, "True Positive", "#E74C3C", -2, 0, "up", max_rows_top, False),
-        (s_fp, fp, "False Positive", "#3498DB", 7, 0, "up", max_rows_top, True),
-        (s_fn, fn, "False Negative", "#E74C3C", -2, -GAP_Y, "down", max_rows_bottom, True),
-        (s_tn, tn, "True Negative", "#3498DB", 7, -GAP_Y, "down", max_rows_bottom, False)
-    ]
-    for s_count, real_count, label, color, ox, oy, direct, m_rows, false_categorized in quadrants:
-        if s_count > 0:
-            x, y = get_coords(s_count, ox, oy, direct, m_rows)
-            if false_categorized:
-                marker_style = dict(
-                    size=12,
-                    color='rgba(0,0,0,0)',
-                    symbol="circle",
-                    line=dict(
-                        color=color,
-                        width=2,
-                        dash='dot'
-                    )
-                )
+        def get_coords(count, offset_x, base_y, direction, section_max_rows):
+            x = [offset_x + (i % COLS) for i in range(count)]
+            if direction == "up":
+                y = [(base_y + section_max_rows - 1) - (i // COLS) for i in range(count)]
             else:
-                marker_style = dict(
-                    size=12,
-                    color=color,
-                    symbol="circle",
-                    line=dict(width=0)
-                )
-            fig.add_trace(go.Scatter(
-                x=x, y=y,
-                mode='markers',
-                marker=marker_style,
-                name=f"{label}",
-                hovertemplate=f"<b>{label}</b><br>Percentage: %{{text}}%<extra></extra>",
-                text=[round(real_count / total * 100, 1)] * s_count
-            ))
+                y = [base_y - (i // COLS) for i in range(count)]
+            return x, y
 
-    plotly_font = dict(family="Work Sans, sans-serif", size=13, color="black")
-    plotly_font_bold = dict(family="Work Sans, sans-serif", size=14, color="black")
-    #Predicted positive
-    y_pos_labels = max_rows_top + 0.8
-    fig.add_annotation(x=1.2, y=y_pos_labels, text=f"True Positive (n={tp})", showarrow=False, font=plotly_font)
-    fig.add_annotation(x=10.2, y=y_pos_labels, text=f"False Positive (n={fp})", showarrow=False, font=plotly_font)
-    fig.add_annotation(x=5.75, y=y_pos_labels + 1.5, text=f"<b>PREDICTED POSITIVE (n={tp + fp})</b>", showarrow=False,
-                       font=plotly_font_bold)
-    #Predicted negative
-    y_neg_labels_top = -GAP_Y +1.2
-    fig.add_annotation(x=1.2, y=y_neg_labels_top, text=f"False Negative (n={fn})", showarrow=False, font=plotly_font)
-    fig.add_annotation(x=10.2, y=y_neg_labels_top, text=f"True Negative (n={tn})", showarrow=False, font=plotly_font)
-    fig.add_annotation(x=5.75, y=y_neg_labels_top + 1.5, text=f"<b>PREDICTED NEGATIVE (n={tn + fn})</b>", showarrow=False,
-                       font=plotly_font_bold)
 
-    deepest_row = -GAP_Y - (max_rows_bottom - 1)
+        fig = go.Figure()
 
-    fig.update_layout(
-        showlegend=False,
-        xaxis=dict(showgrid=False, zeroline=False, showticklabels=False, range=[-4, 16]),
-        yaxis=dict(showgrid=False, zeroline=False, showticklabels=False, range=[deepest_row - 1.5, y_pos_labels + 3]),
-        margin=dict(l=0, r=0, t=10, b=0),
-        height=500,
-        plot_bgcolor="rgba(0,0,0,0)",
-        paper_bgcolor="rgba(0,0,0,0)"
-    )
+        quadrants = [
+            (s_tp, tp, "True Positive", "#E74C3C", -2, 0, "up", max_rows_top, False),
+            (s_fp, fp, "False Positive", "#3498DB", 7, 0, "up", max_rows_top, True),
+            (s_fn, fn, "False Negative", "#E74C3C", -2, -GAP_Y, "down", max_rows_bottom, True),
+            (s_tn, tn, "True Negative", "#3498DB", 7, -GAP_Y, "down", max_rows_bottom, False)
+        ]
+        for s_count, real_count, label, color, ox, oy, direct, m_rows, false_categorized in quadrants:
+            if s_count > 0:
+                x, y = get_coords(s_count, ox, oy, direct, m_rows)
+                if false_categorized:
+                    marker_style = dict(
+                        size=12,
+                        color='rgba(0,0,0,0)',
+                        symbol="circle",
+                        line=dict(
+                            color=color,
+                            width=2,
+                            dash='dot'
+                        )
+                    )
+                else:
+                    marker_style = dict(
+                        size=12,
+                        color=color,
+                        symbol="circle",
+                        line=dict(width=0)
+                    )
+                fig.add_trace(go.Scatter(
+                    x=x, y=y,
+                    mode='markers',
+                    marker=marker_style,
+                    name=f"{label}",
+                    hovertemplate=f"<b>{label}</b><br>Percentage: %{{text}}%<extra></extra>",
+                    text=[round(real_count / total * 100, 1)] * s_count
+                ))
 
-    st.plotly_chart(fig, use_container_width=True, config={'displayModeBar': False})
+        plotly_font = dict(family="Work Sans, sans-serif", size=13, color="black")
+        plotly_font_bold = dict(family="Work Sans, sans-serif", size=14, color="black")
+        #Predicted positive
+        y_pos_labels = max_rows_top + 0.8
+        fig.add_annotation(x=1.2, y=y_pos_labels, text=f"True Positive (n={tp})", showarrow=False, font=plotly_font)
+        fig.add_annotation(x=10.2, y=y_pos_labels, text=f"False Positive (n={fp})", showarrow=False, font=plotly_font)
+        fig.add_annotation(x=5.75, y=y_pos_labels + 1.5, text=f"<b>PREDICTED POSITIVE (n={tp + fp})</b>", showarrow=False,
+                           font=plotly_font_bold)
+        #Predicted negative
+        y_neg_labels_top = -GAP_Y +1.2
+        fig.add_annotation(x=1.2, y=y_neg_labels_top, text=f"False Negative (n={fn})", showarrow=False, font=plotly_font)
+        fig.add_annotation(x=10.2, y=y_neg_labels_top, text=f"True Negative (n={tn})", showarrow=False, font=plotly_font)
+        fig.add_annotation(x=5.75, y=y_neg_labels_top + 1.5, text=f"<b>PREDICTED NEGATIVE (n={tn + fn})</b>", showarrow=False,
+                           font=plotly_font_bold)
+
+        deepest_row = -GAP_Y - (max_rows_bottom - 1)
+
+        fig.update_layout(
+            showlegend=False,
+            xaxis=dict(showgrid=False, zeroline=False, showticklabels=False, range=[-4, 16]),
+            yaxis=dict(showgrid=False, zeroline=False, showticklabels=False, range=[deepest_row - 1.5, y_pos_labels + 3]),
+            margin=dict(l=0, r=0, t=10, b=0),
+            height=500,
+            plot_bgcolor="rgba(0,0,0,0)",
+            paper_bgcolor="rgba(0,0,0,0)"
+        )
+
+        st.plotly_chart(fig, use_container_width=True, config={'displayModeBar': False})
 
 
 
@@ -613,10 +644,14 @@ m1_data = {'name': 'Model 1', 'y_true': y1_p2, 'probs': p1_p2, 'test_harm_sec': 
 m2_data = {'name': 'Model 2', 'y_true': y2_p2, 'probs': p2_p2, 'test_harm_sec': harm_val_m2}
 
 with col_ctrl1:
-    plot_dca_multi_compare_kde([m1_data, m2_data], prev_sec, pt_sec)
+    with st.container(border=True):
+        st.markdown("<span class='custom-card'></span>", unsafe_allow_html=True)
+        plot_dca_multi_compare_kde([m1_data, m2_data], prev_sec, pt_sec)
 
 with col_ctrl2:
-    plot_roc_multi([m1_data, m2_data])
+    with st.container(border=True):
+        st.markdown("<span class='custom-card'></span>", unsafe_allow_html=True)
+        plot_roc_multi([m1_data, m2_data])
 
 # ============================================
 #       PAGE 3: MODEL COMPARISON - CALIBRATION
@@ -671,7 +706,11 @@ comp_models = [
 
 # --- Columns 1-2: Plots ---
 with col_dca:
-    plot_dca_multi_compare(comp_models, prev_comp, pt_comp)
+    with st.container(border=True):
+        st.markdown("<span class='custom-card'></span>", unsafe_allow_html=True)
+        plot_dca_multi_compare(comp_models, prev_comp, pt_comp)
 
 with col_cal:
-    plot_calibration_multi(comp_models)
+    with st.container(border=True):
+        st.markdown("<span class='custom-card'></span>", unsafe_allow_html=True)
+        plot_calibration_multi(comp_models)
