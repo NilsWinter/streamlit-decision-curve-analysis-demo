@@ -351,7 +351,7 @@ def plot_roc_multi(models_data):
 # -------------------------
 st.title("Decision Curve Analysis Visualizer")
 st.markdown("Decision Curve Analysis (DCA) is a method for estimating and evaluating a model's clinical utility by quantifying clinical consequences in terms of benefits and harms and thereby estimating the net benefit (NB) of a model. The evaluation of the potential clinical utility of a model is an essential addition to the evaluation of the model's statistical predictive performance, as the latter does not account for the clinical consequences and therefore is not sufficiently informative when deciding whether to use the respective model in clinical practice. ")
-
+st.write("")
 # ==========================================
 #       PAGE 1: SINGLE MODEL ANALYSIS
 # ==========================================
@@ -367,22 +367,12 @@ auc_main = 0.80
 with c1:
     prev_main = st.slider("Prevalence of the Event", 0.05, 0.95, 0.33, 0.01, key="prev_main")
 
-    # different options for illustrating informative text
 with c2:
-    pt_main = st.slider("Decision Threshold (pₜ)", 0.01, 0.99, 0.33, 0.01, key="pt_main", help="**Numbers needed**: How many interventions would I do to get one True Positive? **For instance:** I would perform 20 times intervention x to treat one person for whom the intervention is beneficial (i.e. with the event) -> **Odds** of 1:20, i.e. threshold of 0.476 (4.76%)")
-    with st.expander("Decision Threshold"):
-        st.write("""
-            **"Numbers needed"**: How many interventions would I do to get one True Positive? 
-                
-            **For instance:** I would perform 20 times intervention x to treat one person for whom the intervention is beneficial (i.e. with the event) 
-            -> **Odds** of 1:20, i.e. threshold of 0.476 (4.76%)
-        """)
-    st.info("**Numbers needed**: How many interventions would I do to get one True Positive? **For instance:** I would perform 20 times intervention x to treat one person for whom the intervention is beneficial (i.e. with the event) -> **Odds** of 1:20, i.e. threshold of 0.476 (4.76%)")
-
+    pt_main = st.slider("Decision Threshold (pₜ)", 0.01, 0.99, 0.33, 0.01, key="pt_main", help="**Numbers needed**: How many interventions would I do to get one True Positive? **For instance:** I would perform 20 times intervention x to treat one person for whom the intervention is beneficial (i.e. with the event) -> **Odds** of 1:20, i.e. threshold of 0.0476 (4.76%)")
 
     # Row 2: Test Harm
 with c4:
-    use_harm = st.checkbox("Include Test Harm")
+    use_harm = st.checkbox("Include Test Harm", help="The utility of a test in DCA is per default equal to 0; however, in cases where the data collection required to inform the model involves invasive or dangerous procedures or significant financial, time or effort investment, you can **explicitly account for the test harm** in DCA.")
 with c3:
     if use_harm:
         harm_val = st.slider("Test Harm", 0.0, 0.1, 0.02, 0.005, key="harm_main")
@@ -543,7 +533,7 @@ st.markdown("---")
 st.header("Model Comparison - Discrimination")
 selected_mode = st.pills(
     "Selection of Scenario:",
-    ["Free Analysis", "Scenario 1: Test Harm", "Scenario 2: ..."],
+    ["Free Analysis", "Scenario 1: Higher AUC, lower NB", "Scenario 2: Test Harm"],
     default="Free Analysis"
 )
 
@@ -552,7 +542,7 @@ if "last_mode" not in st.session_state:
 
 mode_changed = (selected_mode != st.session_state.last_mode)
 
-if selected_mode == "Scenario 1: Test Harm":
+if selected_mode == "Scenario 2: Test Harm":
     if mode_changed:
         st.session_state.prev_sec = 0.20
         st.session_state.am1 = 0.80
@@ -561,9 +551,8 @@ if selected_mode == "Scenario 1: Test Harm":
         st.session_state.harm_val_m1 = 0.05
     var_m1 = 1.5
     var_m2 = 1.5
-elif selected_mode == "Scenario 2: ...":
+elif selected_mode == "Scenario 1: Higher AUC, lower NB":
     if mode_changed:
-        st.session_state.prev_sec = 0.33
         st.session_state.am1 = 0.75
         st.session_state.am2 = 0.75
         st.session_state.use_harm_m1 = False
@@ -578,8 +567,6 @@ else:
 
 st.session_state.last_mode = selected_mode
 
-if selected_mode == "Scenario 1: Test Harm":
-    st.info("ℹ️ *Heterogeneity is fixed at 1.5 for this scenario. Model 1 starts with a Test Harm of 0.05.*")
 
 # fixed sample size at 5000
 n_sec = 5000
@@ -592,6 +579,8 @@ st.write("")
 
 col_ctrl1, col_ctrl2, col_ctrl3 = st.columns([1, 0.8, 0.6])
 with col_ctrl3:
+    if selected_mode == "Scenario 2: Test Harm":
+        st.info("ℹ️ *Heterogeneity is fixed at 1.5 for both models for this scenario.*")
     st.markdown(f"<h3 style='color:{COLOR_M1_DIS}'>Model 1</h3>", unsafe_allow_html=True)
     use_harm_m1 = st.checkbox("Include Test Harm", key="use_harm_m1")
     if use_harm_m1:
@@ -599,7 +588,7 @@ with col_ctrl3:
     else:
         harm_val_m1 = 0.0
     auc_m1 = st.slider("AUC", 0.55, 0.95, 0.80, key="am1")
-    if selected_mode in ["Free Analysis", "Scenario 2: ..."]:
+    if selected_mode in ["Free Analysis", "Scenario 1: Higher AUC, lower NB"]:
         var_m1 = st.slider("Heterogeneity (Std Dev)", 0.5, 2.5, 1.0, 0.1, key="vm1", help="Lower variance means predictions cluster more in the middle")
     # Model 2
     st.markdown(f"<h3 style='color:{COLOR_M2_DIS}'>Model 2</h3>", unsafe_allow_html=True)
@@ -609,9 +598,12 @@ with col_ctrl3:
     else:
         harm_val_m2 = 0.0
     auc_m2 = st.slider("AUC", 0.55, 0.95, 0.80, key="am2")
-    if selected_mode in ["Free Analysis", "Scenario 2: ..."]:
+    if selected_mode in ["Free Analysis", "Scenario 1: Higher AUC, lower NB"]:
         var_m2 = st.slider("Heterogeneity (Std Dev)", 0.5, 2.5, 2.0, 0.1, key="vm2",
                        help="Higher variance means more 'confident' predictions at 0 and 1")
+    if selected_mode == "Free Analysis":
+        st.write("")
+        st.info("ℹ️ You can see that the **AUCs** of both models are **equal**, but the **distribution of predictions and TPR/ FPR differ**, which leads to **different NBs** depending on the selected threshold range.")
 
 # Page 2: Data generation
 y1_p2, p1_p2 = generate_model_data(auc_m1, prev_sec, n_sec, variance=var_m1)
