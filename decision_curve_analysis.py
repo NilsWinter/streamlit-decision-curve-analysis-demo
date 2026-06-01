@@ -50,29 +50,41 @@ st.markdown("""
 # Inject Custom CSS
 st.markdown("""
 <style>
-/* Hintergrund der App und des Headers (bleibt gleich) */
-.stApp, [data-testid="stHeader"] {
+/* Change the overall app background color */
+.stApp {
+    background-color: rgba(0,0,0,0); /* Light gray/off-white */
+}
+
+/* Target the header so it blends seamlessly with the background */
+[data-testid="stHeader"] {
     background-color: rgba(0,0,0,0);
 }
 
-/* Das neue, ultraschnelle CSS:
-Streamlit verpackt Container mit einem Key automatisch in ein Div, 
-das die Klasse .st-key-DEINKEY erhält. Das nutzen wir aus!
+/* 
+The Bulletproof Selector:
+1. Finds ANY vertical block that contains the 'custom-card' marker.
+2. EXCLUDES it if it contains a nested vertical block that also has the marker.
+Result: It only ever styles the absolute deepest container holding your marker.
 */
-.st-key-card_dca, 
-.st-key-card_calc, 
-.st-key-card_metrics, 
-.st-key-card_matrix {
+div[data-testid="stVerticalBlock"]:has(.custom-card):not(:has(div[data-testid="stVerticalBlock"] .custom-card)) {
     background-color: #FFFFFF !important;
     border-radius: 12px !important;
     box-shadow: 0 4px 16px rgba(0, 0, 0, 0.15) !important;
     padding: 1.5rem !important;
-    overflow: visible !important;
-    border: none !important; /* Entfernt den Standard-Streamlit-Rahmen, da wir unseren eigenen Schatten haben */
+    /* Ensure the shadow doesn't get clipped by Streamlit's default overflow settings */
+    overflow: visible !important; 
 }
 </style>
 """, unsafe_allow_html=True)
 
+
+def st_footer(text):
+    """Renders small, black footer text cleanly."""
+    st.markdown("<hr style='margin: 1rem 0; border: none; border-top: 1px solid #E6E9EF;'>", unsafe_allow_html=True)
+    st.markdown(
+        f"<p style='font-size: 0.85rem; color: black; margin: 0;'>{text}</p>",
+        unsafe_allow_html=True
+    )
 # -------------------------
 #   COLOR CONFIGURATION
 # -------------------------
@@ -98,16 +110,20 @@ st.set_page_config(layout="wide", page_title="DCA Visualizer")
 # -------------------------
 @st.cache_data
 def generate_model_data(target_auc, prevalence, n_total, variance=1.0):
+    # variance meaning the ratio
     low, high = 0.0, 7.0
     best_probs = None
     best_y = None
 
-    for _ in range(12):
+    scale_neg = 1.0 / np.sqrt(variance)
+    scale_pos = 1.0 * np.sqrt(variance)
+
+    for _ in range(25):
         mid = (low + high) / 2
         n_pos = int(n_total * prevalence)
         n_neg = n_total - n_pos
-        pos_scores = np.random.normal(loc=mid, scale=variance, size=n_pos)
-        neg_scores = np.random.normal(loc=0.0, scale=1.0, size=n_neg)
+        pos_scores = np.random.normal(loc=mid, scale=scale_pos, size=n_pos)
+        neg_scores = np.random.normal(loc=0.0, scale=scale_neg, size=n_neg)
         X = np.concatenate([pos_scores, neg_scores]).reshape(-1, 1)
         y = np.array([1] * n_pos + [0] * n_neg)
 
@@ -417,19 +433,20 @@ nb_main = net_benefit(prev_main, sens, spec, pt_main, test_harm=harm_val)
 col1, col2, col3 = st.columns([1, 1.2, 0.8])
 
 with col1:
-    with st.container(border=True, key="card_cda"):
-        #st.markdown("<span class='custom-card'></span>", unsafe_allow_html=True)
+    with st.container(border=True):
+        st.markdown("<span class='custom-card'></span>", unsafe_allow_html=True)
         # Pass harm value to plot function so DCA curve adjusts
         plot_combined_dca_kde(model_main_data, prev_main, pt_main, test_harm=harm_val)
+        st_footer("<b>Figure 1.</b> Decision Curve Analysis and the corresponding risk distribution plot.")
 
 with col2:
     # Pass harm value and toggle state to display function
-    with st.container(border=True, key="card_calc"):
+    with st.container(border=True):
         st.markdown("<span class='custom-card'></span>", unsafe_allow_html=True)
         display_nb_calc_detailed(y_main, probs_main, prev_main, pt_main, test_harm=harm_val, use_harm=use_harm)
 
 # Metrics
-    with st.container (border= True, key="card_metrics"):
+    with st.container (border= True):
         st.markdown("<span class='custom-card'></span>", unsafe_allow_html=True)
         st.markdown("### **Metrics**")
         _, content_col, _ = st.columns([0.25, 0.7, 0.05])
@@ -453,7 +470,7 @@ with col2:
             m4.metric("Specificity", f"{spec:.1%}")
 
 with col3:
-    with st.container(border=True, key="card_matrix"):
+    with st.container(border=True):
         st.markdown("<span class='custom-card'></span>", unsafe_allow_html=True)
         st.markdown("### **Confusion Matrix**")
         # Adjust Scale for Graphic
@@ -465,8 +482,6 @@ with col3:
         s_fp = scale_to_100(fp, total)
         s_fn = scale_to_100(fn, total)
         s_tn = scale_to_100(tn, total)
-
-        st.markdown(f"One icon is approximately equivalent to {total / 100:.0f} individuals (N={total})")
 
         COLS = 7
         GAP_Y = 5
@@ -555,6 +570,8 @@ with col3:
 
         st.plotly_chart(fig, use_container_width=True, config={'displayModeBar': False})
 
+        st_footer(f"<b>Figure 2.</b> Confusion Matrix as a function of prevalence and the decision threshold. One icon is approximately equivalent to {total / 100:.0f} individuals (N={total}).")
+
 
 
 # ===============================================
@@ -576,20 +593,23 @@ mode_changed = (selected_mode != st.session_state.last_mode)
 if selected_mode == "Scenario 2: Test Harm":
     if mode_changed:
         st.session_state.prev_sec = 0.20
+        st.session_state.pt_sec = 0.05
         st.session_state.am1 = 0.80
         st.session_state.am2 = 0.70
         st.session_state.use_harm_m1 = True
-        st.session_state.harm_val_m1 = 0.05
-    var_m1 = 1.5
-    var_m2 = 1.5
+        st.session_state.harm_val_m1 = 0.03
+    var_m1 = 1.0
+    var_m2 = 1.0
 elif selected_mode == "Scenario 1: Higher AUC, lower NB":
     if mode_changed:
-        st.session_state.am1 = 0.75
-        st.session_state.am2 = 0.75
+        st.session_state.prev_sec = 0.20
+        st.session_state.pt_sec = 0.25
+        st.session_state.am1 = 0.8
+        st.session_state.am2 = 0.7
         st.session_state.use_harm_m1 = False
         st.session_state.use_harm_m2 = False
-        st.session_state.vm1 = 0.8
-        st.session_state.vm2 = 2.2
+        st.session_state.vm1 = 0.5
+        st.session_state.vm2 = 1.6
 else:
     if mode_changed:
         st.session_state.prev_sec = 0.33
@@ -601,6 +621,8 @@ st.session_state.last_mode = selected_mode
 
 # fixed sample size at 5000
 n_sec = 5000
+if selected_mode == "Scenario 2: Test Harm":
+    st.markdown("We imagine a scenario, in which we want to avoid missing TPs, e.g. because of severe clinical consequences. Thus, the decision threshold is set relatively low at 5% to 10%. We compare two models, model 1 is more complex and requires hard-to-obtain data, but has a higher AUC than model 2, using easy-access data. We want to evaluate the NB of both models in the respective threshold range. Note that heterogeneity is fixed at 1.0 for both models for this scenario.")
 dc1, dc2 = st.columns(2)
 with dc1:
     prev_sec = st.slider("Prevalence", 0.05, 0.95, 0.33, 0.01, key="prev_sec")
@@ -608,19 +630,19 @@ with dc2:
     pt_sec = st.slider("Decision Threshold (pₜ)", 0.01, 0.99, 0.33, 0.01, key="pt_sec")
 st.write("")
 
-col_ctrl1, col_ctrl2, col_ctrl3 = st.columns([1, 0.8, 0.6])
+col_ctrl1, col_ctrl2, col_ctrl3 = st.columns([1, 1, 1])
 with col_ctrl3:
-    if selected_mode == "Scenario 2: Test Harm":
-        st.info("ℹ️ *Heterogeneity is fixed at 1.5 for both models for this scenario.*")
     st.markdown(f"<h3 style='color:{COLOR_M1_DIS}'>Model 1</h3>", unsafe_allow_html=True)
     use_harm_m1 = st.checkbox("Include Test Harm", key="use_harm_m1")
+    if selected_mode == "Scenario 2: Test Harm":
+        st.info("ℹ️ Taking into account the test harm of model 1, we might conclude that we would not subject more that 30 persons to it in order to find one true positive if the model was perfect (Vickers et al., 2019). The reciprocal of 30 is approximately 0.03.")
     if use_harm_m1:
         harm_val_m1 = st.slider("Test Harm", 0.0, 0.1, 0.02, 0.005, key="harm_val_m1")
     else:
         harm_val_m1 = 0.0
     auc_m1 = st.slider("AUC", 0.55, 0.95, 0.80, key="am1")
     if selected_mode in ["Free Analysis", "Scenario 1: Higher AUC, lower NB"]:
-        var_m1 = st.slider("Heterogeneity (Std Dev)", 0.5, 2.5, 1.0, 0.1, key="vm1", help="Lower variance means predictions cluster more in the middle")
+        var_m1 = st.slider("Heterogeneity (Std Dev)", 0.4, 2.5, 1.0, 0.1, key="vm1", help="Lower variance means predictions cluster more in the middle")
     # Model 2
     st.markdown(f"<h3 style='color:{COLOR_M2_DIS}'>Model 2</h3>", unsafe_allow_html=True)
     use_harm_m2 = st.checkbox("Include Test Harm", key="use_harm_m2")
@@ -630,7 +652,7 @@ with col_ctrl3:
         harm_val_m2 = 0.0
     auc_m2 = st.slider("AUC", 0.55, 0.95, 0.80, key="am2")
     if selected_mode in ["Free Analysis", "Scenario 1: Higher AUC, lower NB"]:
-        var_m2 = st.slider("Heterogeneity (Std Dev)", 0.5, 2.5, 2.0, 0.1, key="vm2",
+        var_m2 = st.slider("Heterogeneity (Std Dev)", 0.4, 2.5, 2.0, 0.1, key="vm2",
                        help="Higher variance means more 'confident' predictions at 0 and 1")
     if selected_mode == "Free Analysis":
         st.write("")
@@ -647,11 +669,16 @@ with col_ctrl1:
     with st.container(border=True):
         st.markdown("<span class='custom-card'></span>", unsafe_allow_html=True)
         plot_dca_multi_compare_kde([m1_data, m2_data], prev_sec, pt_sec)
+        st_footer("<b>Figure 3.</b> Decision Curve Analysis and the corresponding risk distribution plots for both models.")
 
 with col_ctrl2:
     with st.container(border=True):
         st.markdown("<span class='custom-card'></span>", unsafe_allow_html=True)
         plot_roc_multi([m1_data, m2_data])
+        st_footer("<b>Figure 4.</b> The receiver operating characteristic (ROC) curve for both models compared to each other. FPR= False Positive Rate, TPR= True Positive Rate.")
+
+if selected_mode == "Scenario 2: Test Harm":
+    st.info("💡 Considering the test harm, model 1 would be clinically harmful in the selected threshold range, even though the model performs better regarding its AUC. Model 2 would be eligible in this scenario, displaying higher NB in the selected threshold range and being superior to the default strategies, i.e. not harmful.")
 
 # ============================================
 #       PAGE 3: MODEL COMPARISON - CALIBRATION
@@ -673,7 +700,7 @@ with gc2:
 st.write("")
 
 # --- Page 3 Layout: 3 Columns ---
-col_dca, col_cal, col_controls = st.columns([1, 1, 0.7])
+col_dca, col_cal, col_controls = st.columns([1, 1, 1])
 
 # --- Column 3: Controls (Right Side) ---
 with col_controls:
@@ -709,8 +736,10 @@ with col_dca:
     with st.container(border=True):
         st.markdown("<span class='custom-card'></span>", unsafe_allow_html=True)
         plot_dca_multi_compare(comp_models, prev_comp, pt_comp)
+        st_footer("<b>Figure 5.</b> Decision Curve Analysis for all three models compared to each other.")
 
 with col_cal:
     with st.container(border=True):
         st.markdown("<span class='custom-card'></span>", unsafe_allow_html=True)
         plot_calibration_multi(comp_models)
+        st_footer("<b>Figure 6.</b> Calibration plot illustrating the relation between the mean predicted probabilities and the true fraction of positives for all three models.")
