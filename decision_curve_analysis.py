@@ -579,16 +579,28 @@ with col3:
 # ===============================================
 st.markdown("---")
 st.header("Model Comparison - Discrimination")
+st.markdown("Steyerberg et al. (2010) explain that a well-discriminating model is particularly important when resources are limited and only those who could benefit most from them, such as high-risk individuals (vs. low-risk individuals), should be allocated the resource. This is because measures of discrimination such as the AUC tell you how well your model ranks individuals with the event higher than individuals without the event. As this is a highly relevant quality in various clinical scenarios, a model's discrimination performance is taken into account in DCA (Vickers et al., 2019), as illustrated below. ")
 selected_mode = st.pills(
     "Selection of Scenario:",
-    ["Free Analysis", "Scenario 1: Higher AUC, lower NB", "Scenario 2: Test Harm"],
+    ["Free Analysis", "Scenario 1a: Same AUC, different NB", "Scenario 1b: Higher AUC, lower NB", "Scenario 2: Test Harm"],
     default="Free Analysis"
 )
 
 if "last_mode" not in st.session_state:
     st.session_state.last_mode = "Free Analysis"
+    st.session_state.prev_sec = 0.33
+    st.session_state.pt_sec = 0.33
+    st.session_state.am1 = 0.80
+    st.session_state.am2 = 0.60
+    st.session_state.vm1 = 1.0
+    st.session_state.vm2 = 1.0
+    st.session_state.use_harm_m1 = False
+    st.session_state.use_harm_m2 = False
 
 mode_changed = (selected_mode != st.session_state.last_mode)
+
+var_m1 = 1.0
+var_m2 = 1.0
 
 if selected_mode == "Scenario 2: Test Harm":
     if mode_changed:
@@ -596,11 +608,14 @@ if selected_mode == "Scenario 2: Test Harm":
         st.session_state.pt_sec = 0.05
         st.session_state.am1 = 0.80
         st.session_state.am2 = 0.70
+        st.session_state.vm1 = 1.0
+        st.session_state.vm2 = 1.0
         st.session_state.use_harm_m1 = True
         st.session_state.harm_val_m1 = 0.03
+        st.session_state.use_harm_m2 = False
     var_m1 = 1.0
     var_m2 = 1.0
-elif selected_mode == "Scenario 1: Higher AUC, lower NB":
+elif selected_mode == "Scenario 1b: Higher AUC, lower NB":
     if mode_changed:
         st.session_state.prev_sec = 0.20
         st.session_state.pt_sec = 0.25
@@ -610,11 +625,32 @@ elif selected_mode == "Scenario 1: Higher AUC, lower NB":
         st.session_state.use_harm_m2 = False
         st.session_state.vm1 = 0.5
         st.session_state.vm2 = 1.6
+    var_m1 = st.session_state.get("vm1", 0.5)
+    var_m2 = st.session_state.get("vm2", 1.6)
+elif selected_mode == "Scenario 1a: Same AUC, different NB":
+    if mode_changed:
+        st.session_state.prev_sec = 0.30
+        st.session_state.pt_sec = 0.27
+        st.session_state.am1 = 0.80
+        st.session_state.am2 = 0.80
+        st.session_state.vm1 = 1.0
+        st.session_state.vm2 = 2.2
+        st.session_state.use_harm_m1 = False
+        st.session_state.use_harm_m2 = False
+    var_m1 = st.session_state.get("vm1", 1.0)
+    var_m2 = st.session_state.get("vm2", 2.2)
 else:
     if mode_changed:
         st.session_state.prev_sec = 0.33
+        st.session_state.pt_sec = 0.33
         st.session_state.am1 = 0.80
-        st.session_state.am2 = 0.80
+        st.session_state.am2 = 0.60
+        st.session_state.vm1 = 1.0
+        st.session_state.vm2 = 1.0
+        st.session_state.use_harm_m1 = False
+        st.session_state.use_harm_m2 = False
+    var_m1 = st.session_state.get("vm1", 1.0)
+    var_m2 = st.session_state.get("vm2", 1.0)
 
 st.session_state.last_mode = selected_mode
 
@@ -622,12 +658,16 @@ st.session_state.last_mode = selected_mode
 # fixed sample size at 5000
 n_sec = 5000
 if selected_mode == "Scenario 2: Test Harm":
-    st.markdown("We imagine a scenario, in which we want to avoid missing TPs, e.g. because of severe clinical consequences. Thus, the decision threshold is set relatively low at 5% to 10%. We compare two models, model 1 is more complex and requires hard-to-obtain data, but has a higher AUC than model 2, using easy-access data. We want to evaluate the NB of both models in the respective threshold range. Note that heterogeneity is fixed at 1.0 for both models for this scenario.")
+    st.markdown("Let's imagine a scenario, in which we want to avoid missing TPs, e.g. because of severe clinical consequences. Thus, the decision threshold is set relatively low at 5% to 10%. We compare two models, model 1 is more complex and requires hard-to-obtain data, but has a higher AUC than model 2, using easy-access data. We want to evaluate the NB of both models in the respective threshold range. Note that the model classification profile is fixed at 1.0 for both models for this scenario, hence yielding symmetric ROC curves.")
+if selected_mode == "Scenario 1b: Higher AUC, lower NB":
+    st.markdown("")
+if selected_mode == "Scenario 1a: Same AUC, different NB":
+    st.markdown("")
 dc1, dc2 = st.columns(2)
 with dc1:
-    prev_sec = st.slider("Prevalence", 0.05, 0.95, 0.33, 0.01, key="prev_sec")
+    prev_sec = st.slider("Prevalence", 0.05, 0.95, value=st.session_state.get("prev_sec", 0.33), key="prev_sec")
 with dc2:
-    pt_sec = st.slider("Decision Threshold (pₜ)", 0.01, 0.99, 0.33, 0.01, key="pt_sec")
+    pt_sec = st.slider("Decision Threshold (pₜ)", 0.01, 0.99, value=st.session_state.get("pt_sec", 0.33), key="pt_sec")
 st.write("")
 
 col_ctrl1, col_ctrl2, col_ctrl3 = st.columns([1, 1, 1])
@@ -640,9 +680,15 @@ with col_ctrl3:
         harm_val_m1 = st.slider("Test Harm", 0.0, 0.1, 0.02, 0.005, key="harm_val_m1")
     else:
         harm_val_m1 = 0.0
-    auc_m1 = st.slider("AUC", 0.55, 0.95, 0.80, key="am1")
-    if selected_mode in ["Free Analysis", "Scenario 1: Higher AUC, lower NB"]:
-        var_m1 = st.slider("Heterogeneity (Std Dev)", 0.4, 2.5, 1.0, 0.1, key="vm1", help="Lower variance means predictions cluster more in the middle")
+    auc_m1 = st.slider("AUC", 0.55, 0.95, value=st.session_state.get("am1", 0.80), key="am1")
+    if selected_mode in ["Free Analysis", "Scenario 1a: Same AUC, different NB", "Scenario 1b: Higher AUC, lower NB"]:
+        var_m1 = st.slider("Model Classification Profile", 0.4, 2.5, value=st.session_state.get("vm1", 1.0), key="vm1", help=(
+    "Adjusts the Model's Classification Profile (illustrating how it distributes risk predictions).\n\n"
+    "• 1.0 = The Balanced All-Rounder. The model performs more consistently across the risk spectrum.\n\n"
+    "• > 1.0 = The High-Risk Specialist. The model predicts more confidently for higher-risk patients, making it more fitting for higher decision thresholds.\n\n"
+    "• < 1.0 = The Low-Risk Specialist. The model predicts more confidently for lower-risk patients, making it more fitting for lower decision thresholds (e.g. easy-to-access screening)."
+    )
+)
     # Model 2
     st.markdown(f"<h3 style='color:{COLOR_M2_DIS}'>Model 2</h3>", unsafe_allow_html=True)
     use_harm_m2 = st.checkbox("Include Test Harm", key="use_harm_m2")
@@ -650,13 +696,16 @@ with col_ctrl3:
         harm_val_m2 = st.slider("Test Harm", 0.0, 0.1, 0.02, 0.005, key="harm_val_m2")
     else:
         harm_val_m2 = 0.0
-    auc_m2 = st.slider("AUC", 0.55, 0.95, 0.80, key="am2")
-    if selected_mode in ["Free Analysis", "Scenario 1: Higher AUC, lower NB"]:
-        var_m2 = st.slider("Heterogeneity (Std Dev)", 0.4, 2.5, 2.0, 0.1, key="vm2",
-                       help="Higher variance means more 'confident' predictions at 0 and 1")
-    if selected_mode == "Free Analysis":
-        st.write("")
-        st.info("ℹ️ You can see that the **AUCs** of both models are **equal**, but the **distribution of predictions and TPR/ FPR differ**, which leads to **different NBs** depending on the selected threshold range.")
+    auc_m2 = st.slider("AUC", 0.55, 0.95, value=st.session_state.get("am2", 0.60), key="am2")
+    if selected_mode in ["Free Analysis", "Scenario 1a: Same AUC, different NB", "Scenario 1b: Higher AUC, lower NB"]:
+        var_m2 = st.slider("Model Classification Profile", 0.4, 2.5, value=st.session_state.get("vm2", 1.0), key="vm2",
+                       help=(
+    "Adjusts the Model's Classification Profile (illustrating how it distributes risk predictions).\n\n"
+    "• 1.0 = The Balanced All-Rounder. The model performs more consistently across the risk spectrum.\n\n"
+    "• > 1.0 = The High-Risk Specialist. The model predicts more confidently for higher-risk patients, making it more fitting for higher decision thresholds.\n\n"
+    "• < 1.0 = The Low-Risk Specialist. The model predicts more confidently for lower-risk patients, making it more fitting for lower decision thresholds (e.g. easy-to-access screening)."
+    )
+)
 
 # Page 2: Data generation
 y1_p2, p1_p2 = generate_model_data(auc_m1, prev_sec, n_sec, variance=var_m1)
@@ -678,14 +727,36 @@ with col_ctrl2:
         st_footer("<b>Figure 4.</b> The receiver operating characteristic (ROC) curve for both models compared to each other. FPR= False Positive Rate, TPR= True Positive Rate.")
 
 if selected_mode == "Scenario 2: Test Harm":
-    st.info("💡 Considering the test harm, model 1 would be clinically harmful in the selected threshold range, even though the model performs better regarding its AUC. Model 2 would be eligible in this scenario, displaying higher NB in the selected threshold range and being superior to the default strategies, i.e. not harmful.")
+    st.success("💡 Considering the test harm, model 1 would be clinically harmful in the selected threshold range, even though the model performs better regarding its AUC. Model 2 would be eligible in this scenario, displaying higher NB in the selected threshold range and being superior to the default strategies, i.e. not harmful.")
+if selected_mode == "Free Analysis":
+    is_default = (
+            st.session_state.get("prev_sec") == 0.33 and
+            st.session_state.get("pt_sec") == 0.33 and
+            st.session_state.get("am1") == 0.80 and
+            st.session_state.get("am2") == 0.60 and
+            st.session_state.get("vm1") == 1.0 and
+            st.session_state.get("use_harm_m1") == False and
+            st.session_state.get("use_harm_m2") == False and
+            st.session_state.get("vm2") == 1.0
+    )
+    if is_default:
+        st.success("💡 You can see that given two models with a similar model classification profile, the model with the higher discrimination performance (AUC) has NB across a wider range of threshold probabilities.")
+if selected_mode == "Scenario 1a: Same AUC, different NB":
+    st.write("")
+    st.success(
+        "💡 Notice that both models are set to the **same AUC** (e.g., 0.80). "
+        "However, by changing the *Model Classification Profile*, you alter *how* they distribute risk:\n"
+        "- **Model 1** acts more like an *All-Rounder*, yielding a higher NB at **lower thresholds**.\n"
+        "- **Model 2** acts more like a *Specialist*, maintaining a higher NB at **higher thresholds** because it identifies a high-risk subgroup with higher certainty.\n\n"
+        "**Different model qualities can be more or less beneficial or even harmful in different clinical contexts (reflected in the respective selected threshold range).**"
+    )
 
 # ============================================
 #       PAGE 3: MODEL COMPARISON - CALIBRATION
 # ============================================
 st.markdown("---")
 st.header("Model Comparison - Calibration")
-
+st.markdown("Steyerberg et al. (2010) explain that a well-calibrated model is particularly essential if you want to inform patients about their prognosis. This is because, calibration measures how well the predicted probabilities correspond to the true fraction of positives. Van Calster & Vickers (2015) noted that for a well-calibrated model approximately x out of 100 patients with a risk score of x% should actually have the respective outcome. As this, too, is a highly relevant quality of a model in different clinical scenarios, DCA takes a model's calibration into account as well (Vickers et al., 2019), as you can see below.")
 # --- Page 3 Global Controls ---
 gc1, gc2 = st.columns(2)
 # fixed sample size at 5000, fixed AUC at 0.80
