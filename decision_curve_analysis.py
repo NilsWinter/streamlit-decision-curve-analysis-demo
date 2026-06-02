@@ -47,6 +47,44 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
+# Inject Custom CSS
+st.markdown("""
+<style>
+/* Change the overall app background color */
+.stApp {
+    background-color: rgba(0,0,0,0); /* Light gray/off-white */
+}
+
+/* Target the header so it blends seamlessly with the background */
+[data-testid="stHeader"] {
+    background-color: rgba(0,0,0,0);
+}
+
+/* 
+The Bulletproof Selector:
+1. Finds ANY vertical block that contains the 'custom-card' marker.
+2. EXCLUDES it if it contains a nested vertical block that also has the marker.
+Result: It only ever styles the absolute deepest container holding your marker.
+*/
+div[data-testid="stVerticalBlock"]:has(.custom-card):not(:has(div[data-testid="stVerticalBlock"] .custom-card)) {
+    background-color: #FFFFFF !important;
+    border-radius: 12px !important;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.15) !important;
+    padding: 1.5rem !important;
+    /* Ensure the shadow doesn't get clipped by Streamlit's default overflow settings */
+    overflow: visible !important; 
+}
+</style>
+""", unsafe_allow_html=True)
+
+
+def st_footer(text):
+    """Renders small, black footer text cleanly."""
+    st.markdown("<hr style='margin: 1rem 0; border: none; border-top: 1px solid #E6E9EF;'>", unsafe_allow_html=True)
+    st.markdown(
+        f"<p style='font-size: 0.85rem; color: black; margin: 0;'>{text}</p>",
+        unsafe_allow_html=True
+    )
 # -------------------------
 #   COLOR CONFIGURATION
 # -------------------------
@@ -72,16 +110,20 @@ st.set_page_config(layout="wide", page_title="DCA Visualizer")
 # -------------------------
 @st.cache_data
 def generate_model_data(target_auc, prevalence, n_total, variance=1.0):
+    # variance meaning the ratio
     low, high = 0.0, 7.0
     best_probs = None
     best_y = None
 
-    for _ in range(12):
+    scale_neg = 1.0 / np.sqrt(variance)
+    scale_pos = 1.0 * np.sqrt(variance)
+
+    for _ in range(25):
         mid = (low + high) / 2
         n_pos = int(n_total * prevalence)
         n_neg = n_total - n_pos
-        pos_scores = np.random.normal(loc=mid, scale=variance, size=n_pos)
-        neg_scores = np.random.normal(loc=0.0, scale=1.0, size=n_neg)
+        pos_scores = np.random.normal(loc=mid, scale=scale_pos, size=n_pos)
+        neg_scores = np.random.normal(loc=0.0, scale=scale_neg, size=n_neg)
         X = np.concatenate([pos_scores, neg_scores]).reshape(-1, 1)
         y = np.array([1] * n_pos + [0] * n_neg)
 
@@ -391,17 +433,21 @@ nb_main = net_benefit(prev_main, sens, spec, pt_main, test_harm=harm_val)
 col1, col2, col3 = st.columns([1, 1.2, 0.8])
 
 with col1:
-    # Pass harm value to plot function so DCA curve adjusts
-    plot_combined_dca_kde(model_main_data, prev_main, pt_main, test_harm=harm_val)
+    with st.container(border=True):
+        st.markdown("<span class='custom-card'></span>", unsafe_allow_html=True)
+        # Pass harm value to plot function so DCA curve adjusts
+        plot_combined_dca_kde(model_main_data, prev_main, pt_main, test_harm=harm_val)
+        st_footer("<b>Figure 1.</b> Decision Curve Analysis and the corresponding risk distribution plot.")
 
 with col2:
     # Pass harm value and toggle state to display function
     with st.container(border=True):
+        st.markdown("<span class='custom-card'></span>", unsafe_allow_html=True)
         display_nb_calc_detailed(y_main, probs_main, prev_main, pt_main, test_harm=harm_val, use_harm=use_harm)
 
 # Metrics
     with st.container (border= True):
-        st.write("")
+        st.markdown("<span class='custom-card'></span>", unsafe_allow_html=True)
         st.markdown("### **Metrics**")
         _, content_col, _ = st.columns([0.25, 0.7, 0.05])
         with content_col:
@@ -424,105 +470,107 @@ with col2:
             m4.metric("Specificity", f"{spec:.1%}")
 
 with col3:
-    st.markdown("### **Confusion Matrix**")
-    # Adjust Scale for Graphic
-    total = tn + fp + fn + tp
-    def scale_to_100(value, total):
-        return int(round((value / total) * 100)) if total > 0 else 0
+    with st.container(border=True):
+        st.markdown("<span class='custom-card'></span>", unsafe_allow_html=True)
+        st.markdown("### **Confusion Matrix**")
+        # Adjust Scale for Graphic
+        total = tn + fp + fn + tp
+        def scale_to_100(value, total):
+            return int(round((value / total) * 100)) if total > 0 else 0
 
-    s_tp = scale_to_100(tp, total)
-    s_fp = scale_to_100(fp, total)
-    s_fn = scale_to_100(fn, total)
-    s_tn = scale_to_100(tn, total)
+        s_tp = scale_to_100(tp, total)
+        s_fp = scale_to_100(fp, total)
+        s_fn = scale_to_100(fn, total)
+        s_tn = scale_to_100(tn, total)
 
-    st.markdown(f"One icon is approximately equivalent to {total / 100:.0f} individuals (N={total})")
+        COLS = 7
+        GAP_Y = 5
 
-    COLS = 7
-    GAP_Y = 5
+        rows_tp = math.ceil(s_tp / COLS) if s_tp > 0 else 0
+        rows_fp = math.ceil(s_fp / COLS) if s_fp > 0 else 0
+        rows_fn = math.ceil(s_fn / COLS) if s_fn > 0 else 0
+        rows_tn = math.ceil(s_tn / COLS) if s_tn > 0 else 0
 
-    rows_tp = math.ceil(s_tp / COLS) if s_tp > 0 else 0
-    rows_fp = math.ceil(s_fp / COLS) if s_fp > 0 else 0
-    rows_fn = math.ceil(s_fn / COLS) if s_fn > 0 else 0
-    rows_tn = math.ceil(s_tn / COLS) if s_tn > 0 else 0
+        max_rows_top = max(rows_tp, rows_fp, 1)
+        max_rows_bottom = max(rows_fn, rows_tn, 1)
 
-    max_rows_top = max(rows_tp, rows_fp, 1)
-    max_rows_bottom = max(rows_fn, rows_tn, 1)
-
-    def get_coords(count, offset_x, base_y, direction, section_max_rows):
-        x = [offset_x + (i % COLS) for i in range(count)]
-        if direction == "up":
-            y = [(base_y + section_max_rows - 1) - (i // COLS) for i in range(count)]
-        else:
-            y = [base_y - (i // COLS) for i in range(count)]
-        return x, y
-
-
-    fig = go.Figure()
-
-    quadrants = [
-        (s_tp, tp, "True Positive", "#E74C3C", -2, 0, "up", max_rows_top, False),
-        (s_fp, fp, "False Positive", "#3498DB", 7, 0, "up", max_rows_top, True),
-        (s_fn, fn, "False Negative", "#E74C3C", -2, -GAP_Y, "down", max_rows_bottom, True),
-        (s_tn, tn, "True Negative", "#3498DB", 7, -GAP_Y, "down", max_rows_bottom, False)
-    ]
-    for s_count, real_count, label, color, ox, oy, direct, m_rows, false_categorized in quadrants:
-        if s_count > 0:
-            x, y = get_coords(s_count, ox, oy, direct, m_rows)
-            if false_categorized:
-                marker_style = dict(
-                    size=12,
-                    color='rgba(0,0,0,0)',
-                    symbol="circle",
-                    line=dict(
-                        color=color,
-                        width=2,
-                        dash='dot'
-                    )
-                )
+        def get_coords(count, offset_x, base_y, direction, section_max_rows):
+            x = [offset_x + (i % COLS) for i in range(count)]
+            if direction == "up":
+                y = [(base_y + section_max_rows - 1) - (i // COLS) for i in range(count)]
             else:
-                marker_style = dict(
-                    size=12,
-                    color=color,
-                    symbol="circle",
-                    line=dict(width=0)
-                )
-            fig.add_trace(go.Scatter(
-                x=x, y=y,
-                mode='markers',
-                marker=marker_style,
-                name=f"{label}",
-                hovertemplate=f"<b>{label}</b><br>Percentage: %{{text}}%<extra></extra>",
-                text=[round(real_count / total * 100, 1)] * s_count
-            ))
+                y = [base_y - (i // COLS) for i in range(count)]
+            return x, y
 
-    plotly_font = dict(family="Work Sans, sans-serif", size=13, color="black")
-    plotly_font_bold = dict(family="Work Sans, sans-serif", size=14, color="black")
-    #Predicted positive
-    y_pos_labels = max_rows_top + 0.8
-    fig.add_annotation(x=1.2, y=y_pos_labels, text=f"True Positive (n={tp})", showarrow=False, font=plotly_font)
-    fig.add_annotation(x=10.2, y=y_pos_labels, text=f"False Positive (n={fp})", showarrow=False, font=plotly_font)
-    fig.add_annotation(x=5.75, y=y_pos_labels + 1.5, text=f"<b>PREDICTED POSITIVE (n={tp + fp})</b>", showarrow=False,
-                       font=plotly_font_bold)
-    #Predicted negative
-    y_neg_labels_top = -GAP_Y +1.2
-    fig.add_annotation(x=1.2, y=y_neg_labels_top, text=f"False Negative (n={fn})", showarrow=False, font=plotly_font)
-    fig.add_annotation(x=10.2, y=y_neg_labels_top, text=f"True Negative (n={tn})", showarrow=False, font=plotly_font)
-    fig.add_annotation(x=5.75, y=y_neg_labels_top + 1.5, text=f"<b>PREDICTED NEGATIVE (n={tn + fn})</b>", showarrow=False,
-                       font=plotly_font_bold)
 
-    deepest_row = -GAP_Y - (max_rows_bottom - 1)
+        fig = go.Figure()
 
-    fig.update_layout(
-        showlegend=False,
-        xaxis=dict(showgrid=False, zeroline=False, showticklabels=False, range=[-4, 16]),
-        yaxis=dict(showgrid=False, zeroline=False, showticklabels=False, range=[deepest_row - 1.5, y_pos_labels + 3]),
-        margin=dict(l=0, r=0, t=10, b=0),
-        height=500,
-        plot_bgcolor="rgba(0,0,0,0)",
-        paper_bgcolor="rgba(0,0,0,0)"
-    )
+        quadrants = [
+            (s_tp, tp, "True Positive", "#E74C3C", -2, 0, "up", max_rows_top, False),
+            (s_fp, fp, "False Positive", "#3498DB", 7, 0, "up", max_rows_top, True),
+            (s_fn, fn, "False Negative", "#E74C3C", -2, -GAP_Y, "down", max_rows_bottom, True),
+            (s_tn, tn, "True Negative", "#3498DB", 7, -GAP_Y, "down", max_rows_bottom, False)
+        ]
+        for s_count, real_count, label, color, ox, oy, direct, m_rows, false_categorized in quadrants:
+            if s_count > 0:
+                x, y = get_coords(s_count, ox, oy, direct, m_rows)
+                if false_categorized:
+                    marker_style = dict(
+                        size=12,
+                        color='rgba(0,0,0,0)',
+                        symbol="circle",
+                        line=dict(
+                            color=color,
+                            width=2,
+                            dash='dot'
+                        )
+                    )
+                else:
+                    marker_style = dict(
+                        size=12,
+                        color=color,
+                        symbol="circle",
+                        line=dict(width=0)
+                    )
+                fig.add_trace(go.Scatter(
+                    x=x, y=y,
+                    mode='markers',
+                    marker=marker_style,
+                    name=f"{label}",
+                    hovertemplate=f"<b>{label}</b><br>Percentage: %{{text}}%<extra></extra>",
+                    text=[round(real_count / total * 100, 1)] * s_count
+                ))
 
-    st.plotly_chart(fig, use_container_width=True, config={'displayModeBar': False})
+        plotly_font = dict(family="Work Sans, sans-serif", size=13, color="black")
+        plotly_font_bold = dict(family="Work Sans, sans-serif", size=14, color="black")
+        #Predicted positive
+        y_pos_labels = max_rows_top + 0.8
+        fig.add_annotation(x=1.2, y=y_pos_labels, text=f"True Positive (n={tp})", showarrow=False, font=plotly_font)
+        fig.add_annotation(x=10.2, y=y_pos_labels, text=f"False Positive (n={fp})", showarrow=False, font=plotly_font)
+        fig.add_annotation(x=5.75, y=y_pos_labels + 1.5, text=f"<b>PREDICTED POSITIVE (n={tp + fp})</b>", showarrow=False,
+                           font=plotly_font_bold)
+        #Predicted negative
+        y_neg_labels_top = -GAP_Y +1.2
+        fig.add_annotation(x=1.2, y=y_neg_labels_top, text=f"False Negative (n={fn})", showarrow=False, font=plotly_font)
+        fig.add_annotation(x=10.2, y=y_neg_labels_top, text=f"True Negative (n={tn})", showarrow=False, font=plotly_font)
+        fig.add_annotation(x=5.75, y=y_neg_labels_top + 1.5, text=f"<b>PREDICTED NEGATIVE (n={tn + fn})</b>", showarrow=False,
+                           font=plotly_font_bold)
+
+        deepest_row = -GAP_Y - (max_rows_bottom - 1)
+
+        fig.update_layout(
+            showlegend=False,
+            xaxis=dict(showgrid=False, zeroline=False, showticklabels=False, range=[-4, 16]),
+            yaxis=dict(showgrid=False, zeroline=False, showticklabels=False, range=[deepest_row - 1.5, y_pos_labels + 3]),
+            margin=dict(l=0, r=0, t=10, b=0),
+            height=500,
+            plot_bgcolor="rgba(0,0,0,0)",
+            paper_bgcolor="rgba(0,0,0,0)"
+        )
+
+        st.plotly_chart(fig, use_container_width=True, config={'displayModeBar': False})
+
+        st_footer(f"<b>Figure 2.</b> Confusion Matrix as a function of prevalence and the decision threshold. One icon is approximately equivalent to {total / 100:.0f} individuals (N={total}).")
 
 
 
@@ -531,65 +579,116 @@ with col3:
 # ===============================================
 st.markdown("---")
 st.header("Model Comparison - Discrimination")
+st.markdown("Steyerberg et al. (2010) explain that a well-discriminating model is particularly important when resources are limited and only those who could benefit most from them, such as high-risk individuals (vs. low-risk individuals), should be allocated the resource. This is because measures of discrimination such as the AUC tell you how well your model ranks individuals with the event higher than individuals without the event. As this is a highly relevant quality in various clinical scenarios, a model's discrimination performance is taken into account in DCA (Vickers et al., 2019), as illustrated below. ")
 selected_mode = st.pills(
     "Selection of Scenario:",
-    ["Free Analysis", "Scenario 1: Higher AUC, lower NB", "Scenario 2: Test Harm"],
+    ["Free Analysis", "Scenario 1a: Same AUC, different NB", "Scenario 1b: Higher AUC, lower NB", "Scenario 2: Test Harm"],
     default="Free Analysis"
 )
 
 if "last_mode" not in st.session_state:
     st.session_state.last_mode = "Free Analysis"
+    st.session_state.prev_sec = 0.33
+    st.session_state.pt_sec = 0.33
+    st.session_state.am1 = 0.80
+    st.session_state.am2 = 0.60
+    st.session_state.vm1 = 1.0
+    st.session_state.vm2 = 1.0
+    st.session_state.use_harm_m1 = False
+    st.session_state.use_harm_m2 = False
 
 mode_changed = (selected_mode != st.session_state.last_mode)
+
+var_m1 = 1.0
+var_m2 = 1.0
 
 if selected_mode == "Scenario 2: Test Harm":
     if mode_changed:
         st.session_state.prev_sec = 0.20
+        st.session_state.pt_sec = 0.05
         st.session_state.am1 = 0.80
         st.session_state.am2 = 0.70
+        st.session_state.vm1 = 1.0
+        st.session_state.vm2 = 1.0
         st.session_state.use_harm_m1 = True
-        st.session_state.harm_val_m1 = 0.05
-    var_m1 = 1.5
-    var_m2 = 1.5
-elif selected_mode == "Scenario 1: Higher AUC, lower NB":
+        st.session_state.harm_val_m1 = 0.03
+        st.session_state.use_harm_m2 = False
+    var_m1 = 1.0
+    var_m2 = 1.0
+elif selected_mode == "Scenario 1b: Higher AUC, lower NB":
     if mode_changed:
-        st.session_state.am1 = 0.75
-        st.session_state.am2 = 0.75
+        st.session_state.prev_sec = 0.20
+        st.session_state.pt_sec = 0.25
+        st.session_state.am1 = 0.8
+        st.session_state.am2 = 0.7
         st.session_state.use_harm_m1 = False
         st.session_state.use_harm_m2 = False
-        st.session_state.vm1 = 0.8
+        st.session_state.vm1 = 0.5
+        st.session_state.vm2 = 1.6
+    var_m1 = st.session_state.get("vm1", 0.5)
+    var_m2 = st.session_state.get("vm2", 1.6)
+elif selected_mode == "Scenario 1a: Same AUC, different NB":
+    if mode_changed:
+        st.session_state.prev_sec = 0.30
+        st.session_state.pt_sec = 0.27
+        st.session_state.am1 = 0.80
+        st.session_state.am2 = 0.80
+        st.session_state.vm1 = 1.0
         st.session_state.vm2 = 2.2
+        st.session_state.use_harm_m1 = False
+        st.session_state.use_harm_m2 = False
+    var_m1 = st.session_state.get("vm1", 1.0)
+    var_m2 = st.session_state.get("vm2", 2.2)
 else:
     if mode_changed:
         st.session_state.prev_sec = 0.33
+        st.session_state.pt_sec = 0.33
         st.session_state.am1 = 0.80
-        st.session_state.am2 = 0.80
+        st.session_state.am2 = 0.60
+        st.session_state.vm1 = 1.0
+        st.session_state.vm2 = 1.0
+        st.session_state.use_harm_m1 = False
+        st.session_state.use_harm_m2 = False
+    var_m1 = st.session_state.get("vm1", 1.0)
+    var_m2 = st.session_state.get("vm2", 1.0)
 
 st.session_state.last_mode = selected_mode
 
 
 # fixed sample size at 5000
 n_sec = 5000
+if selected_mode == "Scenario 2: Test Harm":
+    st.markdown("Let's imagine a scenario, in which we want to avoid missing TPs, e.g. because of severe clinical consequences. Thus, the decision threshold is set relatively low at 5% to 10%. We compare two models, model 1 is more complex and requires hard-to-obtain data, but has a higher AUC than model 2, using easy-access data. We want to evaluate the NB of both models in the respective threshold range. Note that the model classification profile is fixed at 1.0 for both models for this scenario, hence yielding symmetric ROC curves.")
+if selected_mode == "Scenario 1b: Higher AUC, lower NB":
+    st.markdown("")
+if selected_mode == "Scenario 1a: Same AUC, different NB":
+    st.markdown("")
 dc1, dc2 = st.columns(2)
 with dc1:
-    prev_sec = st.slider("Prevalence", 0.05, 0.95, 0.33, 0.01, key="prev_sec")
+    prev_sec = st.slider("Prevalence", 0.05, 0.95, value=st.session_state.get("prev_sec", 0.33), key="prev_sec")
 with dc2:
-    pt_sec = st.slider("Decision Threshold (pₜ)", 0.01, 0.99, 0.33, 0.01, key="pt_sec")
+    pt_sec = st.slider("Decision Threshold (pₜ)", 0.01, 0.99, value=st.session_state.get("pt_sec", 0.33), key="pt_sec")
 st.write("")
 
-col_ctrl1, col_ctrl2, col_ctrl3 = st.columns([1, 0.8, 0.6])
+col_ctrl1, col_ctrl2, col_ctrl3 = st.columns([1, 1, 1])
 with col_ctrl3:
-    if selected_mode == "Scenario 2: Test Harm":
-        st.info("ℹ️ *Heterogeneity is fixed at 1.5 for both models for this scenario.*")
     st.markdown(f"<h3 style='color:{COLOR_M1_DIS}'>Model 1</h3>", unsafe_allow_html=True)
     use_harm_m1 = st.checkbox("Include Test Harm", key="use_harm_m1")
+    if selected_mode == "Scenario 2: Test Harm":
+        st.info("ℹ️ Taking into account the test harm of model 1, we might conclude that we would not subject more that 30 persons to it in order to find one true positive if the model was perfect (Vickers et al., 2019). The reciprocal of 30 is approximately 0.03.")
     if use_harm_m1:
         harm_val_m1 = st.slider("Test Harm", 0.0, 0.1, 0.02, 0.005, key="harm_val_m1")
     else:
         harm_val_m1 = 0.0
-    auc_m1 = st.slider("AUC", 0.55, 0.95, 0.80, key="am1")
-    if selected_mode in ["Free Analysis", "Scenario 1: Higher AUC, lower NB"]:
-        var_m1 = st.slider("Heterogeneity (Std Dev)", 0.5, 2.5, 1.0, 0.1, key="vm1", help="Lower variance means predictions cluster more in the middle")
+    auc_m1 = st.slider("AUC", 0.55, 0.95, value=st.session_state.get("am1", 0.80), key="am1")
+    if selected_mode in ["Free Analysis", "Scenario 1a: Same AUC, different NB", "Scenario 1b: Higher AUC, lower NB"]:
+        var_m1 = st.slider("Model Classification Profile", 0.4, 2.5, value=st.session_state.get("vm1", 1.0), key="vm1", help=(
+    "Adjusts the Model's Classification Profile (illustrating how it distributes risk predictions).\n\n"
+    "• 1.0 = The Balanced All-Rounder. The model performs more consistently across the risk spectrum.\n\n"
+    "• > 1.0 = The High-Risk Specialist. The model predicts more confidently for higher-risk patients, making it more fitting for higher decision thresholds.\n\n"
+    "• < 1.0 = The Low-Risk Specialist. The model predicts more confidently for lower-risk patients, making it more fitting for lower decision thresholds (e.g. easy-to-access screening)."
+    )
+)
     # Model 2
     st.markdown(f"<h3 style='color:{COLOR_M2_DIS}'>Model 2</h3>", unsafe_allow_html=True)
     use_harm_m2 = st.checkbox("Include Test Harm", key="use_harm_m2")
@@ -597,13 +696,16 @@ with col_ctrl3:
         harm_val_m2 = st.slider("Test Harm", 0.0, 0.1, 0.02, 0.005, key="harm_val_m2")
     else:
         harm_val_m2 = 0.0
-    auc_m2 = st.slider("AUC", 0.55, 0.95, 0.80, key="am2")
-    if selected_mode in ["Free Analysis", "Scenario 1: Higher AUC, lower NB"]:
-        var_m2 = st.slider("Heterogeneity (Std Dev)", 0.5, 2.5, 2.0, 0.1, key="vm2",
-                       help="Higher variance means more 'confident' predictions at 0 and 1")
-    if selected_mode == "Free Analysis":
-        st.write("")
-        st.info("ℹ️ You can see that the **AUCs** of both models are **equal**, but the **distribution of predictions and TPR/ FPR differ**, which leads to **different NBs** depending on the selected threshold range.")
+    auc_m2 = st.slider("AUC", 0.55, 0.95, value=st.session_state.get("am2", 0.60), key="am2")
+    if selected_mode in ["Free Analysis", "Scenario 1a: Same AUC, different NB", "Scenario 1b: Higher AUC, lower NB"]:
+        var_m2 = st.slider("Model Classification Profile", 0.4, 2.5, value=st.session_state.get("vm2", 1.0), key="vm2",
+                       help=(
+    "Adjusts the Model's Classification Profile (illustrating how it distributes risk predictions).\n\n"
+    "• 1.0 = The Balanced All-Rounder. The model performs more consistently across the risk spectrum.\n\n"
+    "• > 1.0 = The High-Risk Specialist. The model predicts more confidently for higher-risk patients, making it more fitting for higher decision thresholds.\n\n"
+    "• < 1.0 = The Low-Risk Specialist. The model predicts more confidently for lower-risk patients, making it more fitting for lower decision thresholds (e.g. easy-to-access screening)."
+    )
+)
 
 # Page 2: Data generation
 y1_p2, p1_p2 = generate_model_data(auc_m1, prev_sec, n_sec, variance=var_m1)
@@ -613,17 +715,48 @@ m1_data = {'name': 'Model 1', 'y_true': y1_p2, 'probs': p1_p2, 'test_harm_sec': 
 m2_data = {'name': 'Model 2', 'y_true': y2_p2, 'probs': p2_p2, 'test_harm_sec': harm_val_m2}
 
 with col_ctrl1:
-    plot_dca_multi_compare_kde([m1_data, m2_data], prev_sec, pt_sec)
+    with st.container(border=True):
+        st.markdown("<span class='custom-card'></span>", unsafe_allow_html=True)
+        plot_dca_multi_compare_kde([m1_data, m2_data], prev_sec, pt_sec)
+        st_footer("<b>Figure 3.</b> Decision Curve Analysis and the corresponding risk distribution plots for both models.")
 
 with col_ctrl2:
-    plot_roc_multi([m1_data, m2_data])
+    with st.container(border=True):
+        st.markdown("<span class='custom-card'></span>", unsafe_allow_html=True)
+        plot_roc_multi([m1_data, m2_data])
+        st_footer("<b>Figure 4.</b> The receiver operating characteristic (ROC) curve for both models compared to each other. FPR= False Positive Rate, TPR= True Positive Rate.")
+
+if selected_mode == "Scenario 2: Test Harm":
+    st.success("💡 Considering the test harm, model 1 would be clinically harmful in the selected threshold range, even though the model performs better regarding its AUC. Model 2 would be eligible in this scenario, displaying higher NB in the selected threshold range and being superior to the default strategies, i.e. not harmful.")
+if selected_mode == "Free Analysis":
+    is_default = (
+            st.session_state.get("prev_sec") == 0.33 and
+            st.session_state.get("pt_sec") == 0.33 and
+            st.session_state.get("am1") == 0.80 and
+            st.session_state.get("am2") == 0.60 and
+            st.session_state.get("vm1") == 1.0 and
+            st.session_state.get("use_harm_m1") == False and
+            st.session_state.get("use_harm_m2") == False and
+            st.session_state.get("vm2") == 1.0
+    )
+    if is_default:
+        st.success("💡 You can see that given two models with a similar model classification profile, the model with the higher discrimination performance (AUC) has NB across a wider range of threshold probabilities.")
+if selected_mode == "Scenario 1a: Same AUC, different NB":
+    st.write("")
+    st.success(
+        "💡 Notice that both models are set to the **same AUC** (e.g., 0.80). "
+        "However, by changing the *Model Classification Profile*, you alter *how* they distribute risk:\n"
+        "- **Model 1** acts more like an *All-Rounder*, yielding a higher NB at **lower thresholds**.\n"
+        "- **Model 2** acts more like a *Specialist*, maintaining a higher NB at **higher thresholds** because it identifies a high-risk subgroup with higher certainty.\n\n"
+        "**Different model qualities can be more or less beneficial or even harmful in different clinical contexts (reflected in the respective selected threshold range).**"
+    )
 
 # ============================================
 #       PAGE 3: MODEL COMPARISON - CALIBRATION
 # ============================================
 st.markdown("---")
 st.header("Model Comparison - Calibration")
-
+st.markdown("Steyerberg et al. (2010) explain that a well-calibrated model is particularly essential if you want to inform patients about their prognosis. This is because, calibration measures how well the predicted probabilities correspond to the true fraction of positives. Van Calster & Vickers (2015) noted that for a well-calibrated model approximately x out of 100 patients with a risk score of x% should actually have the respective outcome. As this, too, is a highly relevant quality of a model in different clinical scenarios, DCA takes a model's calibration into account as well (Vickers et al., 2019), as you can see below.")
 # --- Page 3 Global Controls ---
 gc1, gc2 = st.columns(2)
 # fixed sample size at 5000, fixed AUC at 0.80
@@ -638,7 +771,7 @@ with gc2:
 st.write("")
 
 # --- Page 3 Layout: 3 Columns ---
-col_dca, col_cal, col_controls = st.columns([1, 1, 0.7])
+col_dca, col_cal, col_controls = st.columns([1, 1, 1])
 
 # --- Column 3: Controls (Right Side) ---
 with col_controls:
@@ -671,7 +804,13 @@ comp_models = [
 
 # --- Columns 1-2: Plots ---
 with col_dca:
-    plot_dca_multi_compare(comp_models, prev_comp, pt_comp)
+    with st.container(border=True):
+        st.markdown("<span class='custom-card'></span>", unsafe_allow_html=True)
+        plot_dca_multi_compare(comp_models, prev_comp, pt_comp)
+        st_footer("<b>Figure 5.</b> Decision Curve Analysis for all three models compared to each other.")
 
 with col_cal:
-    plot_calibration_multi(comp_models)
+    with st.container(border=True):
+        st.markdown("<span class='custom-card'></span>", unsafe_allow_html=True)
+        plot_calibration_multi(comp_models)
+        st_footer("<b>Figure 6.</b> Calibration plot illustrating the relation between the mean predicted probabilities and the true fraction of positives for all three models.")
