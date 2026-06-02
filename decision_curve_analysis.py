@@ -8,16 +8,54 @@ from sklearn.metrics import roc_curve, roc_auc_score, confusion_matrix
 from sklearn.linear_model import LogisticRegression
 from sklearn.calibration import CalibrationDisplay
 import streamlit as st
+import plotly.graph_objects as go
+import math
 
 matplotlib.use("Agg")  # for Streamlit
+
+## Set font ##
+st.markdown("""
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Work+Sans:wght@300;400;600;700&display=swap');
+
+        /* Die Schriftart auf Text-Elemente anwenden, aber Icons ausschließen */
+        html, body, .stMarkdown, p, h1, h2, h3, h4, h5, h6, label, [data-testid="stMetricValue"] {
+            font-family: 'Work Sans', sans-serif !important;
+        }
+
+        /* Spezifisch für den Expander-Titel (verhindert das Überlagern) */
+        .st-ae p, .st-an p {
+            font-family: 'Work Sans', sans-serif !important;
+        }
+
+        /* WICHTIG: Icons (Pfeile etc.) dürfen NICHT die Schriftart überschreiben */
+        [data-testid="stExpander"] svg, 
+        [data-icon], 
+        .st-ae svg {
+            font-family: inherit !important;
+        }
+
+        /* Falls der Expander-Header immer noch zerschossen ist, hier gezielt korrigieren */
+        summary[data-testid="stExpanderHeader"] {
+            font-family: 'Work Sans', sans-serif !important;
+        }
+
+        /* Das Icon im Expander schützen */
+        summary[data-testid="stExpanderHeader"] svg {
+            font-family: unset !important;
+        }
+    </style>
+""", unsafe_allow_html=True)
 
 # -------------------------
 #   COLOR CONFIGURATION
 # -------------------------
 COLOR_MAIN = "#9CC6DB"  # Main Model
 COLOR_ACCENT = "#FF4B4B"  # Threshold lines
-COLOR_M1_DIS = "#088F8F"   # Model 1 Discrimination
-COLOR_M2_DIS = "#E86FAE"   # Model 2 Discrimination
+COLOR_M1_DIS = "#09a7a7"   # Model 1 Discrimination
+COLOR_M1_DIS_Neg = "#055f5f" # Model 1 Discrimination Negative
+COLOR_M2_DIS = "#df6ba8"   # Model 2 Discrimination
+COLOR_M2_DIS_Neg = "#8a4268" # Model 2 Discrimination Negative
 COLOR_M1 = "#8F0177"  # Model 1
 COLOR_M2 = "#84994F"  # Model 2
 COLOR_M3 = "#F1A90E" # Model 3
@@ -188,7 +226,7 @@ def display_nb_calc_detailed(y_true, probs, prev, pt, test_harm=0.0, use_harm=Fa
         # Formula with Test Harm
         st.latex(
             r"NB = \text{sens} \times prev - (1 - \text{spec}) \times (1 - prev) \times \frac{p_t}{1 - p_t} - \text{Test Harm}")
-        st.markdown("#### Calculation")
+        st.markdown("##### Calculation")
         st.latex(r'''
         NB = (%.2f \times %.2f) - ((1 - %.2f) \times (1 - %.2f) \times \frac{%.2f}{1 - %.2f}) - %.4f
         ''' % (sens, prev, spec, prev, pt, pt, test_harm))
@@ -199,7 +237,7 @@ def display_nb_calc_detailed(y_true, probs, prev, pt, test_harm=0.0, use_harm=Fa
     else:
         # Standard Formula
         st.latex(r"NB = \text{sens} \times prev - (1 - \text{spec}) \times (1 - prev) \times \frac{p_t}{1 - p_t}")
-        st.markdown("#### Calculation")
+        st.markdown("##### Calculation")
         st.latex(r'''
         NB = (%.2f \times %.2f) - ((1 - %.2f) \times (1 - %.2f) \times \frac{%.2f}{1 - %.2f})
         ''' % (sens, prev, spec, prev, pt, pt))
@@ -250,12 +288,13 @@ def plot_dca_multi_compare_kde(models_data, prevalence, threshold_pt):
     ax1.grid(True, alpha=0.1)
 
     # Distribution plots
-    for ax, m, color in zip([ax2, ax3], models_data, colors):
+    neg_distr_colors = [COLOR_M1_DIS_Neg, COLOR_M2_DIS_Neg]
+    for ax, m, color, neg_distr_colors in zip([ax2, ax3], models_data, colors, neg_distr_colors):
         y = m['y_true']
         p = m['probs']
 
-        sns.kdeplot(p[y == 0], ax=ax, fill=True, color="gray", label="Neg", alpha=0.3, bw_adjust=0.8)
-        sns.kdeplot(p[y == 1], ax=ax, fill=True, color=color, label="Pos", alpha=0.5, bw_adjust=0.8)
+        sns.kdeplot(p[y == 0], ax=ax, fill=True, color=neg_distr_colors, label="Negative", alpha=0.3, bw_adjust=0.8)
+        sns.kdeplot(p[y == 1], ax=ax, fill=True, color=color, label="Positive", alpha=0.5, bw_adjust=0.8)
 
         ax.axvline(threshold_pt, color=COLOR_ACCENT, linestyle="--", linewidth=1)
         ax.set_title("")
@@ -311,7 +350,8 @@ def plot_roc_multi(models_data):
 #   Streamlit App Layout
 # -------------------------
 st.title("Decision Curve Analysis Visualizer")
-
+st.markdown("Decision Curve Analysis (DCA) is a method for estimating and evaluating a model's clinical utility by quantifying clinical consequences in terms of benefits and harms and thereby estimating the net benefit (NB) of a model. The evaluation of the potential clinical utility of a model is an essential addition to the evaluation of the model's statistical predictive performance, as the latter does not account for the clinical consequences and therefore is not sufficiently informative when deciding whether to use the respective model in clinical practice. ")
+st.write("")
 # ==========================================
 #       PAGE 1: SINGLE MODEL ANALYSIS
 # ==========================================
@@ -325,13 +365,14 @@ n_main = 5000
 auc_main = 0.80
 
 with c1:
-    prev_main = st.slider("Prevalence", 0.05, 0.95, 0.33, 0.01, key="prev_main")
-with c2:
-    pt_main = st.slider("Decision Threshold (pₜ)", 0.01, 0.99, 0.33, 0.01, key="pt_main")
+    prev_main = st.slider("Prevalence of the Event", 0.05, 0.95, 0.33, 0.01, key="prev_main")
 
-# Row 2: Test Harm
+with c2:
+    pt_main = st.slider("Decision Threshold (pₜ)", 0.01, 0.99, 0.33, 0.01, key="pt_main", help="**Numbers needed**: How many interventions would I do to get one True Positive? **For instance:** I would perform 20 times intervention x to treat one person for whom the intervention is beneficial (i.e. with the event) -> **Odds** of 1:20, i.e. threshold of 0.0476 (4.76%)")
+
+    # Row 2: Test Harm
 with c4:
-    use_harm = st.checkbox("Include Test Harm")
+    use_harm = st.checkbox("Include Test Harm", help="The utility of a test in DCA is per default equal to 0; however, in cases where the data collection required to inform the model involves invasive or dangerous procedures or significant financial, time or effort investment, you can **explicitly account for the test harm** in DCA.")
 with c3:
     if use_harm:
         harm_val = st.slider("Test Harm", 0.0, 0.1, 0.02, 0.005, key="harm_main")
@@ -355,38 +396,177 @@ with col1:
 
 with col2:
     # Pass harm value and toggle state to display function
-    display_nb_calc_detailed(y_main, probs_main, prev_main, pt_main, test_harm=harm_val, use_harm=use_harm)
+    with st.container(border=True):
+        display_nb_calc_detailed(y_main, probs_main, prev_main, pt_main, test_harm=harm_val, use_harm=use_harm)
+
+# Metrics
+    with st.container (border= True):
+        st.write("")
+        st.markdown("### **Metrics**")
+        _, content_col, _ = st.columns([0.25, 0.7, 0.05])
+        with content_col:
+            st.markdown("""
+                        <style>
+                            [data-testid="stMetricValue"] {
+                            font-size: 1.8rem !important;
+                            }
+                            .stDataFrame [data-testid="stTable"] th,
+                            .stDataFrame [data-testid="stTable"] td {
+                            }
+                        </style>
+                    """, unsafe_allow_html=True)
+            m1, m2 = st.columns(2, gap="small")
+            m1.metric("Net Benefit", f"{nb_main:.4f}")
+            m2.metric("AUC", f"{auc_main:.3f}")
+
+            m3, m4 = st.columns(2)
+            m3.metric("Sensitivity", f"{sens:.1%}")
+            m4.metric("Specificity", f"{spec:.1%}")
 
 with col3:
     st.markdown("### **Confusion Matrix**")
-    cm_df = pd.DataFrame([[tn, fp], [fn, tp]], index=["True Negative", "True Positive"], columns=["Predicted Negative", "Predicted Positive"])
-    st.dataframe(cm_df, use_container_width=True)
-    st.write("")
+    # Adjust Scale for Graphic
+    total = tn + fp + fn + tp
+    def scale_to_100(value, total):
+        return int(round((value / total) * 100)) if total > 0 else 0
 
-    st.markdown("""
-            <style>
-                [data-testid="stMetricValue"] {
-                    font-size: 1.8rem !important;
-                }
-                .stDataFrame [data-testid="stTable"] th,
-                .stDataFrame [data-testid="stTable"] td {
-                }
-            </style>
-        """, unsafe_allow_html=True)
-    st.markdown("### **Metrics**")
-    m1, m2 = st.columns(2)
-    m1.metric("Net Benefit", f"{nb_main:.4f}")
-    m2.metric("AUC", f"{auc_main:.3f}")
+    s_tp = scale_to_100(tp, total)
+    s_fp = scale_to_100(fp, total)
+    s_fn = scale_to_100(fn, total)
+    s_tn = scale_to_100(tn, total)
 
-    m3, m4 = st.columns(2)
-    m3.metric("Sensitivity", f"{sens:.1%}")
-    m4.metric("Specificity", f"{spec:.1%}")
+    st.markdown(f"One icon is approximately equivalent to {total / 100:.0f} individuals (N={total})")
+
+    COLS = 7
+    GAP_Y = 5
+
+    rows_tp = math.ceil(s_tp / COLS) if s_tp > 0 else 0
+    rows_fp = math.ceil(s_fp / COLS) if s_fp > 0 else 0
+    rows_fn = math.ceil(s_fn / COLS) if s_fn > 0 else 0
+    rows_tn = math.ceil(s_tn / COLS) if s_tn > 0 else 0
+
+    max_rows_top = max(rows_tp, rows_fp, 1)
+    max_rows_bottom = max(rows_fn, rows_tn, 1)
+
+    def get_coords(count, offset_x, base_y, direction, section_max_rows):
+        x = [offset_x + (i % COLS) for i in range(count)]
+        if direction == "up":
+            y = [(base_y + section_max_rows - 1) - (i // COLS) for i in range(count)]
+        else:
+            y = [base_y - (i // COLS) for i in range(count)]
+        return x, y
+
+
+    fig = go.Figure()
+
+    quadrants = [
+        (s_tp, tp, "True Positive", "#E74C3C", -2, 0, "up", max_rows_top, False),
+        (s_fp, fp, "False Positive", "#3498DB", 7, 0, "up", max_rows_top, True),
+        (s_fn, fn, "False Negative", "#E74C3C", -2, -GAP_Y, "down", max_rows_bottom, True),
+        (s_tn, tn, "True Negative", "#3498DB", 7, -GAP_Y, "down", max_rows_bottom, False)
+    ]
+    for s_count, real_count, label, color, ox, oy, direct, m_rows, false_categorized in quadrants:
+        if s_count > 0:
+            x, y = get_coords(s_count, ox, oy, direct, m_rows)
+            if false_categorized:
+                marker_style = dict(
+                    size=12,
+                    color='rgba(0,0,0,0)',
+                    symbol="circle",
+                    line=dict(
+                        color=color,
+                        width=2,
+                        dash='dot'
+                    )
+                )
+            else:
+                marker_style = dict(
+                    size=12,
+                    color=color,
+                    symbol="circle",
+                    line=dict(width=0)
+                )
+            fig.add_trace(go.Scatter(
+                x=x, y=y,
+                mode='markers',
+                marker=marker_style,
+                name=f"{label}",
+                hovertemplate=f"<b>{label}</b><br>Percentage: %{{text}}%<extra></extra>",
+                text=[round(real_count / total * 100, 1)] * s_count
+            ))
+
+    plotly_font = dict(family="Work Sans, sans-serif", size=13, color="black")
+    plotly_font_bold = dict(family="Work Sans, sans-serif", size=14, color="black")
+    #Predicted positive
+    y_pos_labels = max_rows_top + 0.8
+    fig.add_annotation(x=1.2, y=y_pos_labels, text=f"True Positive (n={tp})", showarrow=False, font=plotly_font)
+    fig.add_annotation(x=10.2, y=y_pos_labels, text=f"False Positive (n={fp})", showarrow=False, font=plotly_font)
+    fig.add_annotation(x=5.75, y=y_pos_labels + 1.5, text=f"<b>PREDICTED POSITIVE (n={tp + fp})</b>", showarrow=False,
+                       font=plotly_font_bold)
+    #Predicted negative
+    y_neg_labels_top = -GAP_Y +1.2
+    fig.add_annotation(x=1.2, y=y_neg_labels_top, text=f"False Negative (n={fn})", showarrow=False, font=plotly_font)
+    fig.add_annotation(x=10.2, y=y_neg_labels_top, text=f"True Negative (n={tn})", showarrow=False, font=plotly_font)
+    fig.add_annotation(x=5.75, y=y_neg_labels_top + 1.5, text=f"<b>PREDICTED NEGATIVE (n={tn + fn})</b>", showarrow=False,
+                       font=plotly_font_bold)
+
+    deepest_row = -GAP_Y - (max_rows_bottom - 1)
+
+    fig.update_layout(
+        showlegend=False,
+        xaxis=dict(showgrid=False, zeroline=False, showticklabels=False, range=[-4, 16]),
+        yaxis=dict(showgrid=False, zeroline=False, showticklabels=False, range=[deepest_row - 1.5, y_pos_labels + 3]),
+        margin=dict(l=0, r=0, t=10, b=0),
+        height=500,
+        plot_bgcolor="rgba(0,0,0,0)",
+        paper_bgcolor="rgba(0,0,0,0)"
+    )
+
+    st.plotly_chart(fig, use_container_width=True, config={'displayModeBar': False})
+
+
 
 # ===============================================
 #       PAGE 2: MODEL COMPARISON - DISCRIMINATION
 # ===============================================
 st.markdown("---")
 st.header("Model Comparison - Discrimination")
+selected_mode = st.pills(
+    "Selection of Scenario:",
+    ["Free Analysis", "Scenario 1: Higher AUC, lower NB", "Scenario 2: Test Harm"],
+    default="Free Analysis"
+)
+
+if "last_mode" not in st.session_state:
+    st.session_state.last_mode = "Free Analysis"
+
+mode_changed = (selected_mode != st.session_state.last_mode)
+
+if selected_mode == "Scenario 2: Test Harm":
+    if mode_changed:
+        st.session_state.prev_sec = 0.20
+        st.session_state.am1 = 0.80
+        st.session_state.am2 = 0.70
+        st.session_state.use_harm_m1 = True
+        st.session_state.harm_val_m1 = 0.05
+    var_m1 = 1.5
+    var_m2 = 1.5
+elif selected_mode == "Scenario 1: Higher AUC, lower NB":
+    if mode_changed:
+        st.session_state.am1 = 0.75
+        st.session_state.am2 = 0.75
+        st.session_state.use_harm_m1 = False
+        st.session_state.use_harm_m2 = False
+        st.session_state.vm1 = 0.8
+        st.session_state.vm2 = 2.2
+else:
+    if mode_changed:
+        st.session_state.prev_sec = 0.33
+        st.session_state.am1 = 0.80
+        st.session_state.am2 = 0.80
+
+st.session_state.last_mode = selected_mode
+
 
 # fixed sample size at 5000
 n_sec = 5000
@@ -399,7 +579,8 @@ st.write("")
 
 col_ctrl1, col_ctrl2, col_ctrl3 = st.columns([1, 0.8, 0.6])
 with col_ctrl3:
-    # Model1
+    if selected_mode == "Scenario 2: Test Harm":
+        st.info("ℹ️ *Heterogeneity is fixed at 1.5 for both models for this scenario.*")
     st.markdown(f"<h3 style='color:{COLOR_M1_DIS}'>Model 1</h3>", unsafe_allow_html=True)
     use_harm_m1 = st.checkbox("Include Test Harm", key="use_harm_m1")
     if use_harm_m1:
@@ -407,8 +588,8 @@ with col_ctrl3:
     else:
         harm_val_m1 = 0.0
     auc_m1 = st.slider("AUC", 0.55, 0.95, 0.80, key="am1")
-    var_m1 = st.slider("Heterogeneity (Std Dev)", 0.5, 2.5, 1.0, 0.1, key="vm1",
-                       help="Lower variance means predictions cluster more in the middle")
+    if selected_mode in ["Free Analysis", "Scenario 1: Higher AUC, lower NB"]:
+        var_m1 = st.slider("Heterogeneity (Std Dev)", 0.5, 2.5, 1.0, 0.1, key="vm1", help="Lower variance means predictions cluster more in the middle")
     # Model 2
     st.markdown(f"<h3 style='color:{COLOR_M2_DIS}'>Model 2</h3>", unsafe_allow_html=True)
     use_harm_m2 = st.checkbox("Include Test Harm", key="use_harm_m2")
@@ -417,8 +598,12 @@ with col_ctrl3:
     else:
         harm_val_m2 = 0.0
     auc_m2 = st.slider("AUC", 0.55, 0.95, 0.80, key="am2")
-    var_m2 = st.slider("Heterogeneity (Std Dev)", 0.5, 2.5, 2.0, 0.1, key="vm2",
+    if selected_mode in ["Free Analysis", "Scenario 1: Higher AUC, lower NB"]:
+        var_m2 = st.slider("Heterogeneity (Std Dev)", 0.5, 2.5, 2.0, 0.1, key="vm2",
                        help="Higher variance means more 'confident' predictions at 0 and 1")
+    if selected_mode == "Free Analysis":
+        st.write("")
+        st.info("ℹ️ You can see that the **AUCs** of both models are **equal**, but the **distribution of predictions and TPR/ FPR differ**, which leads to **different NBs** depending on the selected threshold range.")
 
 # Page 2: Data generation
 y1_p2, p1_p2 = generate_model_data(auc_m1, prev_sec, n_sec, variance=var_m1)
@@ -458,15 +643,15 @@ col_dca, col_cal, col_controls = st.columns([1, 1, 0.7])
 # --- Column 3: Controls (Right Side) ---
 with col_controls:
     # Model 1
-    st.markdown(f"<span style='color:{COLOR_M1}'><b>Model 1</b></span>", unsafe_allow_html=True)
+    st.markdown(f"<h3 style='color:{COLOR_M1}'><b>Model 1</b></span>", unsafe_allow_html=True)
     cal_m1 = st.slider("Calibration", 0.1, 3.0, 0.4, 0.1, key="cal_m1")
 
     # Model 2
-    st.markdown(f"<span style='color:{COLOR_M2}'><b>Model 2</b></span>", unsafe_allow_html=True)
+    st.markdown(f"<h3 style='color:{COLOR_M2}'><b>Model 2</b></span>", unsafe_allow_html=True)
     cal_m2 = st.slider("Calibration", 0.1, 3.0, 1.0, 0.1, key="cal_m2")
 
     # Model 3
-    st.markdown(f"<span style='color:{COLOR_M3}'><b>Model 3</b></span>", unsafe_allow_html=True)
+    st.markdown(f"<h3 style='color:{COLOR_M3}'><b>Model 3</b></span>", unsafe_allow_html=True)
     cal_m3 = st.slider("Calibration", 0.1, 3.0, 2.0, 0.1, key="cal_m3")
 
 # --- Data Generation ---
