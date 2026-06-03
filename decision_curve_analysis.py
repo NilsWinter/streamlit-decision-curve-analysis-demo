@@ -407,7 +407,7 @@ n_main = 5000
 auc_main = 0.80
 
 with c1:
-    prev_main = st.slider("Prevalence of the Event", 0.05, 0.95, 0.33, 0.01, key="prev_main")
+    prev_main = st.slider("Prevalence", 0.05, 0.95, 0.33, 0.01, key="prev_main")
 
 with c2:
     pt_main = st.slider("Decision Threshold (pₜ)", 0.01, 0.99, 0.33, 0.01, key="pt_main", help="**Numbers needed**: How many interventions would I do to get one True Positive? **For instance:** I would perform 20 times intervention x to treat one person for whom the intervention is beneficial (i.e. with the event) -> **Odds** of 1:20, i.e. threshold of 0.0476 (4.76%)")
@@ -417,7 +417,7 @@ with c4:
     use_harm = st.checkbox("Include Test Harm", help="The utility of a test in DCA is per default equal to 0; however, in cases where the data collection required to inform the model involves invasive or dangerous procedures or significant financial, time or effort investment, you can **explicitly account for the test harm** in DCA.")
 with c3:
     if use_harm:
-        harm_val = st.slider("Test Harm", 0.0, 0.1, 0.02, 0.005, key="harm_main")
+        harm_val = st.slider("Test Harm", 0.0, 0.1, 0.02, 0.005, key="harm_main", help="How many individuals would I subject to (the processes of data collection for) the model to find a TP if the model was perfect (Vickers et al. 2019; Vickers & Elkin, 2006)? The reciprocal of this number is the test harm.")
     else:
         harm_val = 0.0
 
@@ -579,7 +579,7 @@ with col3:
 # ===============================================
 st.markdown("---")
 st.header("Model Comparison - Discrimination")
-st.markdown("Steyerberg et al. (2010) explain that a well-discriminating model is particularly important when resources are limited and only those who could benefit most from them, such as high-risk individuals (vs. low-risk individuals), should be allocated the resource. This is because measures of discrimination such as the AUC tell you how well your model ranks individuals with the event higher than individuals without the event. As this is a highly relevant quality in various clinical scenarios, a model's discrimination performance is taken into account in DCA (Vickers et al., 2019), as illustrated below. ")
+st.markdown("Steyerberg et al. (2010) explain that a well-discriminating model is particularly important when resources are limited and only those who could benefit most from them, such as high-risk individuals (vs. low-risk individuals), should be allocated the resource. This is because measures of discrimination such as the area under the curve (AUC) for the receiver operating characteristic (ROC) curve tell you how well your model ranks individuals with the event higher than individuals without the event. As this is a highly relevant quality in various clinical scenarios, a model's discrimination performance is taken into account in DCA (Vickers et al., 2019), as illustrated below. Furthermore, we demonstrate across our different scenarios that a model’s discrimination performance is important, but not sufficient, for its clinical utility (NB).")
 selected_mode = st.pills(
     "Selection of Scenario:",
     ["Free Analysis", "Scenario 1a: Same AUC, different NB", "Scenario 1b: Higher AUC, lower NB", "Scenario 2: Test Harm"],
@@ -617,8 +617,8 @@ if selected_mode == "Scenario 2: Test Harm":
     var_m2 = 1.0
 elif selected_mode == "Scenario 1b: Higher AUC, lower NB":
     if mode_changed:
-        st.session_state.prev_sec = 0.20
-        st.session_state.pt_sec = 0.25
+        st.session_state.prev_sec = 0.40
+        st.session_state.pt_sec = 0.5
         st.session_state.am1 = 0.8
         st.session_state.am2 = 0.7
         st.session_state.use_harm_m1 = False
@@ -660,53 +660,57 @@ n_sec = 5000
 if selected_mode == "Scenario 2: Test Harm":
     st.markdown("Let's imagine a scenario, in which we want to avoid missing TPs, e.g. because of severe clinical consequences. Thus, the decision threshold is set relatively low at 5% to 10%. We compare two models, model 1 is more complex and requires hard-to-obtain data, but has a higher AUC than model 2, using easy-access data. We want to evaluate the NB of both models in the respective threshold range. Note that the model classification profile is fixed at 1.0 for both models for this scenario, hence yielding symmetric ROC curves.")
 if selected_mode == "Scenario 1b: Higher AUC, lower NB":
-    st.markdown("")
+    st.markdown("Let's imagine a scenario, in which we have trained two models for the prediction of a relevant clinical outcome, wanting to know which of them is better suited in practice. In this scenario, the selected model would be used in clinical practice to decide whether an intervention should be initiated which e.g. would come at a moderate to high cost. For a reasonable threshold range, we might decide that individuals should be considered for intervention only if their risk is at least 50%-60%, i.e. a threshold range of 0.5 to 0.6. Validating both models, we notice that model 1 has a higher discrimination performance than model 2. Without performing a DCA, you might choose model 1 as better suited for clinical practice.")
 if selected_mode == "Scenario 1a: Same AUC, different NB":
-    st.markdown("")
+    st.markdown("Let's imagine a scenario, in which we have trained two models for the prediction of a relevant clinical outcome, wanting to know which of them is better suited in practice. Validating both models, we see that the AUC is equally high for both models. Without performing a DCA, we would not be able to use this information as a basis for deciding which model would be more suitable for our respective context in clinical practice.")
+
 dc1, dc2 = st.columns(2)
 with dc1:
     prev_sec = st.slider("Prevalence", 0.05, 0.95, value=st.session_state.get("prev_sec", 0.33), key="prev_sec")
 with dc2:
-    pt_sec = st.slider("Decision Threshold (pₜ)", 0.01, 0.99, value=st.session_state.get("pt_sec", 0.33), key="pt_sec")
+    pt_sec = st.slider("Decision Threshold (pₜ)", 0.01, 0.99, value=st.session_state.get("pt_sec", 0.33), key="pt_sec", help="**Numbers needed**: How many interventions would I do to get one True Positive? **For instance:** I would perform 20 times intervention x to treat one person for whom the intervention is beneficial (i.e. with the event) -> **Odds** of 1:20, i.e. threshold of 0.0476 (4.76%)")
 st.write("")
 
 col_ctrl1, col_ctrl2, col_ctrl3 = st.columns([1, 1, 1])
 with col_ctrl3:
     st.markdown(f"<h3 style='color:{COLOR_M1_DIS}'>Model 1</h3>", unsafe_allow_html=True)
-    use_harm_m1 = st.checkbox("Include Test Harm", key="use_harm_m1")
+    use_harm_m1 = st.checkbox("Include Test Harm", key="use_harm_m1", help="The utility of a test in DCA is per default equal to 0; however, in cases where the data collection required to inform the model involves invasive or dangerous procedures or significant financial, time or effort investment, you can **explicitly account for the test harm** in DCA.")
     if selected_mode == "Scenario 2: Test Harm":
         st.info("ℹ️ Taking into account the test harm of model 1, we might conclude that we would not subject more that 30 persons to it in order to find one true positive if the model was perfect (Vickers et al., 2019). The reciprocal of 30 is approximately 0.03.")
     if use_harm_m1:
-        harm_val_m1 = st.slider("Test Harm", 0.0, 0.1, 0.02, 0.005, key="harm_val_m1")
+        harm_val_m1 = st.slider("Test Harm", 0.0, 0.1, 0.02, 0.005, key="harm_val_m1", help="How many individuals would I subject to (the processes of data collection for) the model to find a TP if the model was perfect (Vickers et al. 2019; Vickers & Elkin, 2006)? The reciprocal of this number is the test harm.")
     else:
         harm_val_m1 = 0.0
     auc_m1 = st.slider("AUC", 0.55, 0.95, value=st.session_state.get("am1", 0.80), key="am1")
     if selected_mode in ["Free Analysis", "Scenario 1a: Same AUC, different NB", "Scenario 1b: Higher AUC, lower NB"]:
         var_m1 = st.slider("Model Classification Profile", 0.4, 2.5, value=st.session_state.get("vm1", 1.0), key="vm1", help=(
-    "Adjusts the Model's Classification Profile (illustrating how it distributes risk predictions).\n\n"
-    "• 1.0 = The Balanced All-Rounder. The model performs more consistently across the risk spectrum.\n\n"
-    "• > 1.0 = The High-Risk Specialist. The model predicts more confidently for higher-risk patients, making it more fitting for higher decision thresholds.\n\n"
-    "• < 1.0 = The Low-Risk Specialist. The model predicts more confidently for lower-risk patients, making it more fitting for lower decision thresholds (e.g. easy-to-access screening)."
+    "Adjusts the **Model's Classification Profile** (illustrating how it distributes risk predictions).\n\n"
+    "• 1.0 = *The Balanced All-Rounder*. The model performs more consistently across the risk spectrum.\n\n"
+    "• > 1.0 = *The High-Risk Specialist*. The model predicts more confidently for higher-risk patients, making it more fitting for higher decision thresholds.\n\n"
+    "• < 1.0 = *The Low-Risk Specialist*. The model predicts more confidently for lower-risk patients, making it more fitting for lower decision thresholds (e.g. easy-to-access screening)."
     )
 )
     # Model 2
     st.markdown(f"<h3 style='color:{COLOR_M2_DIS}'>Model 2</h3>", unsafe_allow_html=True)
-    use_harm_m2 = st.checkbox("Include Test Harm", key="use_harm_m2")
+    use_harm_m2 = st.checkbox("Include Test Harm", key="use_harm_m2", help="The utility of a test in DCA is per default equal to 0; however, in cases where the data collection required to inform the model involves invasive or dangerous procedures or significant financial, time or effort investment, you can **explicitly account for the test harm** in DCA.")
     if use_harm_m2:
-        harm_val_m2 = st.slider("Test Harm", 0.0, 0.1, 0.02, 0.005, key="harm_val_m2")
+        harm_val_m2 = st.slider("Test Harm", 0.0, 0.1, 0.02, 0.005, key="harm_val_m2", help="How many individuals would I subject to (the processes of data collection for) the model to find a TP if the model was perfect (Vickers et al. 2019; Vickers & Elkin, 2006)? The reciprocal of this number is the test harm.")
     else:
         harm_val_m2 = 0.0
     auc_m2 = st.slider("AUC", 0.55, 0.95, value=st.session_state.get("am2", 0.60), key="am2")
     if selected_mode in ["Free Analysis", "Scenario 1a: Same AUC, different NB", "Scenario 1b: Higher AUC, lower NB"]:
         var_m2 = st.slider("Model Classification Profile", 0.4, 2.5, value=st.session_state.get("vm2", 1.0), key="vm2",
                        help=(
-    "Adjusts the Model's Classification Profile (illustrating how it distributes risk predictions).\n\n"
-    "• 1.0 = The Balanced All-Rounder. The model performs more consistently across the risk spectrum.\n\n"
-    "• > 1.0 = The High-Risk Specialist. The model predicts more confidently for higher-risk patients, making it more fitting for higher decision thresholds.\n\n"
-    "• < 1.0 = The Low-Risk Specialist. The model predicts more confidently for lower-risk patients, making it more fitting for lower decision thresholds (e.g. easy-to-access screening)."
+    "Adjusts the **Model's Classification Profile** (illustrating how it distributes risk predictions).\n\n"
+    "• 1.0 = *The Balanced All-Rounder*. The model performs more consistently across the risk spectrum.\n\n"
+    "• > 1.0 = *The High-Risk Specialist*. The model predicts more confidently for higher-risk patients, making it more fitting for higher decision thresholds.\n\n"
+    "• < 1.0 = *The Low-Risk Specialist*. The model predicts more confidently for lower-risk patients, making it more fitting for lower decision thresholds (e.g. easy-to-access screening)."
     )
 )
-
+    if selected_mode == "Scenario 1a: Same AUC, different NB":
+        st.info("ℹ️ Comparing the two ROC curves in Figure 4, you can see that - although both models have the same area under the ROC curves - the curves differ in shape. This is because, for this scenario, we simulate two models that differ in *how* they predict, i.e. their *Model Classification Profile*.")
+    if selected_mode == "Scenario 1b: Higher AUC, lower NB":
+        st.info("ℹ️ It can be seen that the two models differ both in the shape of their ROC curves, as they differ in their *Model Classification Profiles* (comparable to Scenario 1a), and in the areas under the ROC curve (0.8 vs. 0.7).")
 # Page 2: Data generation
 y1_p2, p1_p2 = generate_model_data(auc_m1, prev_sec, n_sec, variance=var_m1)
 y2_p2, p2_p2 = generate_model_data(auc_m2, prev_sec, n_sec, variance=var_m2)
@@ -727,7 +731,7 @@ with col_ctrl2:
         st_footer("<b>Figure 4.</b> The receiver operating characteristic (ROC) curve for both models compared to each other. FPR= False Positive Rate, TPR= True Positive Rate.")
 
 if selected_mode == "Scenario 2: Test Harm":
-    st.success("💡 Considering the test harm, model 1 would be clinically harmful in the selected threshold range, even though the model performs better regarding its AUC. Model 2 would be eligible in this scenario, displaying higher NB in the selected threshold range and being superior to the default strategies, i.e. not harmful.")
+    st.success("💡 Considering the test harm, model 1 would be **clinically harmful in the selected threshold range, even though the model performs better regarding its AUC**. Model 2 would be eligible in this scenario, displaying higher NB in the selected threshold range and being superior to the default strategies, i.e. not harmful.")
 if selected_mode == "Free Analysis":
     is_default = (
             st.session_state.get("prev_sec") == 0.33 and
@@ -740,9 +744,8 @@ if selected_mode == "Free Analysis":
             st.session_state.get("vm2") == 1.0
     )
     if is_default:
-        st.success("💡 You can see that given two models with a similar model classification profile, the model with the higher discrimination performance (AUC) has NB across a wider range of threshold probabilities.")
+        st.success("💡 You can see that given two models with a similar model classification profile, **the model with the higher discrimination performance (AUC) has NB across a wider range of threshold probabilities.**")
 if selected_mode == "Scenario 1a: Same AUC, different NB":
-    st.write("")
     st.success(
         "💡 Notice that both models are set to the **same AUC** (e.g., 0.80). "
         "However, by changing the *Model Classification Profile*, you alter *how* they distribute risk:\n"
@@ -750,13 +753,19 @@ if selected_mode == "Scenario 1a: Same AUC, different NB":
         "- **Model 2** acts more like a *Specialist*, maintaining a higher NB at **higher thresholds** because it identifies a high-risk subgroup with higher certainty.\n\n"
         "**Different model qualities can be more or less beneficial or even harmful in different clinical contexts (reflected in the respective selected threshold range).**"
     )
-
+if selected_mode == "Scenario 1b: Higher AUC, lower NB":
+    st.success(
+        "💡 You can see that **- although higher in discrimination performance - model 1 yields lower NBs at the selected threshold range**.\n"
+        "This is because model 1 acts more like a *Low-Risk Specialist*, while model 2 acts more like an *High-Risk Specialist*.\n"
+        "For our clinical context with the selected threshold range of 0.5 - 0.6, **model 2 is estimated to have higher clinical utility**.\n\n"
+        "**Different model qualities can be more or less beneficial or even harmful in different clinical contexts (reflected in the respective selected threshold range).**"
+    )
 # ============================================
 #       PAGE 3: MODEL COMPARISON - CALIBRATION
 # ============================================
 st.markdown("---")
 st.header("Model Comparison - Calibration")
-st.markdown("Steyerberg et al. (2010) explain that a well-calibrated model is particularly essential if you want to inform patients about their prognosis. This is because, calibration measures how well the predicted probabilities correspond to the true fraction of positives. Van Calster & Vickers (2015) noted that for a well-calibrated model approximately x out of 100 patients with a risk score of x% should actually have the respective outcome. As this, too, is a highly relevant quality of a model in different clinical scenarios, DCA takes a model's calibration into account as well (Vickers et al., 2019), as you can see below.")
+st.markdown("Steyerberg et al. (2010) explain that a well-calibrated model is particularly essential if you want to inform patients about their prognosis. This is because, calibration measures how well the predicted probabilities correspond to the true fraction of positives. Van Calster & Vickers (2015) noted that for a well-calibrated model approximately x out of 100 patients with a risk score of x% should actually have the respective outcome. As this, too, is a highly relevant quality of a model in different clinical scenarios, DCA takes a model's calibration into account as well (Vickers et al., 2019), as you can see below. We now want to compare three models that only differ in their respective **level of (mis)calibration**. Note that this is just an example for a specific form of miscalibration and that there are other forms of miscalibration (Van Calster & Vickers, 2015) not considered here.")
 # --- Page 3 Global Controls ---
 gc1, gc2 = st.columns(2)
 # fixed sample size at 5000, fixed AUC at 0.80
@@ -766,26 +775,32 @@ auc_cal = 0.80
 with gc1:
     prev_comp = st.slider("Prevalence", 0.05, 0.95, 0.33, 0.01, key="prev_comp")
 with gc2:
-    pt_comp = st.slider("Decision Threshold (pₜ)", 0.01, 0.99, 0.33, 0.01, key="pt_comp")
+    pt_comp = st.slider("Decision Threshold (pₜ)", 0.01, 0.99, 0.33, 0.01, key="pt_comp", help="**Numbers needed**: How many interventions would I do to get one True Positive? **For instance:** I would perform 20 times intervention x to treat one person for whom the intervention is beneficial (i.e. with the event) -> **Odds** of 1:20, i.e. threshold of 0.0476 (4.76%)")
 
 st.write("")
 
 # --- Page 3 Layout: 3 Columns ---
 col_dca, col_cal, col_controls = st.columns([1, 1, 1])
+#with col_dca:
+    #prev_comp = st.slider("Prevalence", 0.05, 0.95, 0.33, 0.01, key="prev_comp")
+#with col_cal:
+    #pt_comp = st.slider("Decision Threshold (pₜ)", 0.01, 0.99, 0.33, 0.01, key="pt_comp",
+                        #help="**Numbers needed**: How many interventions would I do to get one True Positive? **For instance:** I would perform 20 times intervention x to treat one person for whom the intervention is beneficial (i.e. with the event) -> **Odds** of 1:20, i.e. threshold of 0.0476 (4.76%)")
 
 # --- Column 3: Controls (Right Side) ---
 with col_controls:
     # Model 1
     st.markdown(f"<h3 style='color:{COLOR_M1}'><b>Model 1</b></span>", unsafe_allow_html=True)
     cal_m1 = st.slider("Calibration", 0.1, 3.0, 0.4, 0.1, key="cal_m1")
-
+    st.info("ℹ️ This model predicts with a **lower certainty**. Both individuals with low and high risk receive risk scores closer towards the mean (0.5). This results in a flatter calibration curve (see Figure 6.)")
     # Model 2
     st.markdown(f"<h3 style='color:{COLOR_M2}'><b>Model 2</b></span>", unsafe_allow_html=True)
     cal_m2 = st.slider("Calibration", 0.1, 3.0, 1.0, 0.1, key="cal_m2")
-
+    st.info("ℹ️ This model is closest to being **perfectly calibrated**. The curve lies almost perfectly on the dotted line in Figure 6.")
     # Model 3
     st.markdown(f"<h3 style='color:{COLOR_M3}'><b>Model 3</b></span>", unsafe_allow_html=True)
     cal_m3 = st.slider("Calibration", 0.1, 3.0, 2.0, 0.1, key="cal_m3")
+    st.info("ℹ️ This model predict with **higher certainty**. Individuals at lower and higher risk receive more extreme risk scores (towards 0 and 1). This results in a steeper calibration curve (see Figure 6.).")
 
 # --- Data Generation ---
 y1, p1_raw = generate_model_data(auc_cal, prev_comp, n_comp, variance=1.0)
@@ -814,3 +829,5 @@ with col_cal:
         st.markdown("<span class='custom-card'></span>", unsafe_allow_html=True)
         plot_calibration_multi(comp_models)
         st_footer("<b>Figure 6.</b> Calibration plot illustrating the relation between the mean predicted probabilities and the true fraction of positives for all three models.")
+
+st.success("💡 In line with the observations by Van Calster and Vickers (2015), you can see in Figure 5 that the impact of miscalibration on the NB depends on the level and forms of miscalibration, as well as the selected threshold probability (for a fixed prevalence). However, miscalibration generally almost always **results in a reduced NB**. At certain thresholds, miscalibrated models even drop below the default alternative strategies, i.e. indicating a model being clinically **harmful** at this threshold.")
